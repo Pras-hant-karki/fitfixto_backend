@@ -1,33 +1,23 @@
 import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import morgan from 'morgan';
+import { API_PREFIX } from './constants/app.constants';
 import errorHandler from './middlewares/errorHandler';
+import { notFoundHandler } from './middlewares/notFoundHandler';
+import { apiRateLimiter } from './middlewares/rateLimiter';
+import { requestLogger } from './middlewares/requestLogger';
+import { corsMiddleware, securityHeaders } from './middlewares/security';
+import apiRouter from './routes';
 
 const app = express();
 
-app.use(helmet());
-app.use(cors());
-app.use(morgan('dev'));
+app.use(securityHeaders);
+app.use(corsMiddleware);
+app.use(requestLogger);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.get('/health', (_req, res) => {
-  res.status(200).json({
-    success: true,
-    message: 'FitFIXto backend is healthy',
-    timestamp: new Date().toISOString(),
-  });
-});
+app.use(API_PREFIX, apiRateLimiter, apiRouter);
 
+app.use(notFoundHandler);
 app.use(errorHandler);
-
-app.use((_req, res) => {
-  res.status(404).json({
-    success: false,
-    message: 'Route not found',
-    statusCode: 404,
-  });
-});
 
 export default app;

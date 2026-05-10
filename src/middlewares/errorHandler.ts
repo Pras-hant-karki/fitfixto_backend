@@ -1,12 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
-import { AppError } from '../utils/errors';
-
-interface ErrorResponse {
-  success: boolean;
-  message: string;
-  statusCode: number;
-  error?: unknown;
-}
+import { HTTP_STATUS } from '../constants/app.constants';
+import { sendError } from '../utils/apiResponse';
+import { AppError } from '../utils/appError';
 
 const errorHandler = (
   err: Error | AppError,
@@ -17,35 +12,17 @@ const errorHandler = (
   const isDevelopment = process.env.NODE_ENV === 'development';
 
   if (err instanceof AppError) {
-    const response: ErrorResponse = {
-      success: false,
-      message: err.message,
-      statusCode: err.statusCode,
-    };
-
-    if (isDevelopment) {
-      response.error = err;
-    }
-
-    res.status(err.statusCode).json(response);
+    sendError(res, err.message, err.statusCode, isDevelopment ? err.stack : undefined);
     return;
   }
 
-  const response: ErrorResponse = {
-    success: false,
-    message: 'Internal server error',
-    statusCode: 500,
-  };
-
-  if (isDevelopment) {
-    response.error = {
-      message: err.message,
-      stack: err.stack,
-    };
-  }
-
   console.error('Unhandled error:', err);
-  res.status(500).json(response);
+  sendError(
+    res,
+    'Internal server error',
+    HTTP_STATUS.INTERNAL_SERVER_ERROR,
+    isDevelopment ? err.stack : undefined
+  );
 };
 
 export default errorHandler;
