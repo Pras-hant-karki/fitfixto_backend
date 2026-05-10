@@ -1,23 +1,33 @@
 import dotenv from 'dotenv';
+import { z } from 'zod';
 
 dotenv.config();
 
-const env = {
-  PORT: parseInt(process.env.PORT || '5000', 10),
-  NODE_ENV: process.env.NODE_ENV || 'development',
-  MONGODB_URI: process.env.MONGODB_URI || 'mongodb://localhost:27017/fitfixto',
-  MONGODB_TEST_URI: process.env.MONGODB_TEST_URI || 'mongodb://localhost:27017/fitfixto-test',
-  JWT_SECRET: process.env.JWT_SECRET || 'your-secret-key',
-  JWT_EXPIRY: process.env.JWT_EXPIRY || '7d',
-  JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key',
-  JWT_REFRESH_EXPIRY: process.env.JWT_REFRESH_EXPIRY || '30d',
-  EMAIL_HOST: process.env.EMAIL_HOST || 'smtp.gmail.com',
-  EMAIL_PORT: parseInt(process.env.EMAIL_PORT || '587', 10),
-  EMAIL_USER: process.env.EMAIL_USER || '',
-  EMAIL_PASSWORD: process.env.EMAIL_PASSWORD || '',
-  EMAIL_FROM: process.env.EMAIL_FROM || 'noreply@fitfixto.com',
-  UPLOAD_DIR: process.env.UPLOAD_DIR || './uploads',
-  MAX_FILE_SIZE: parseInt(process.env.MAX_FILE_SIZE || '5242880', 10),
-};
+const envSchema = z.object({
+  PORT: z.coerce.number().int().positive().default(5000),
+  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  MONGODB_URI: z.string().min(1),
+  MONGODB_TEST_URI: z.string().min(1).default('mongodb://localhost:27017/fitfixto-test'),
+  JWT_SECRET: z.string().min(10),
+  JWT_EXPIRY: z.string().default('7d'),
+  JWT_REFRESH_SECRET: z.string().min(10),
+  JWT_REFRESH_EXPIRY: z.string().default('30d'),
+  EMAIL_HOST: z.string().default('smtp.gmail.com'),
+  EMAIL_PORT: z.coerce.number().int().positive().default(587),
+  EMAIL_USER: z.string().default(''),
+  EMAIL_PASSWORD: z.string().default(''),
+  EMAIL_FROM: z.string().default('noreply@fitfixto.com'),
+  UPLOAD_DIR: z.string().default('./uploads'),
+  MAX_FILE_SIZE: z.coerce.number().int().positive().default(5242880),
+});
+
+const parsed = envSchema.safeParse(process.env);
+
+if (!parsed.success) {
+  console.error('Invalid environment variables:', parsed.error.flatten().fieldErrors);
+  process.exit(1);
+}
+
+const env = parsed.data;
 
 export default env;

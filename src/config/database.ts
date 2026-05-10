@@ -5,9 +5,20 @@ const connectDB = async (): Promise<void> => {
   try {
     const uri = env.NODE_ENV === 'test' ? env.MONGODB_TEST_URI : env.MONGODB_URI;
 
-    await mongoose.connect(uri);
+    await mongoose.connect(uri, {
+      autoIndex: env.NODE_ENV !== 'production',
+      serverSelectionTimeoutMS: 10000,
+    });
 
-    console.log(`MongoDB connected successfully to ${uri}`);
+    mongoose.connection.on('connected', () => {
+      console.info('MongoDB connection established');
+    });
+
+    mongoose.connection.on('error', (error) => {
+      console.error('MongoDB runtime error:', error);
+    });
+
+    console.log('MongoDB connected successfully');
   } catch (error) {
     console.error('MongoDB connection error:', error);
     process.exit(1);
