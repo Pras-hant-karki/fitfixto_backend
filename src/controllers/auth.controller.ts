@@ -446,4 +446,43 @@ const updateProfile = asyncHandler(
   }
 );
 
-export { register, login, logout, getCurrentUser, verifyEmail, forgotPassword, resetPassword, changePassword, updateProfile };
+const uploadProfileImage = asyncHandler(
+  async (req: any, res: Response): Promise<void> => {
+    if (!req.user) {
+      throw new AppError('Not authenticated', HTTP_STATUS.UNAUTHORIZED);
+    }
+
+    if (!req.file) {
+      throw new AppError(
+        'No image file provided',
+        HTTP_STATUS.BAD_REQUEST
+      );
+    }
+
+    const user = await User.findById(req.user._id);
+
+    if (!user) {
+      throw new AppError(
+        'User not found',
+        HTTP_STATUS.NOT_FOUND
+      );
+    }
+
+    // Store the file path relative to the uploads directory
+    const relativePath = `/uploads/${req.file.filename}`;
+    user.profilePicture = relativePath;
+    await user.save();
+
+    return sendSuccess(
+      res,
+      'Profile image uploaded successfully',
+      {
+        profilePicture: user.profilePicture,
+        message: 'Image uploaded and profile updated',
+      },
+      HTTP_STATUS.OK
+    ) as any;
+  }
+);
+
+export { register, login, logout, getCurrentUser, verifyEmail, forgotPassword, resetPassword, changePassword, updateProfile, uploadProfileImage };
