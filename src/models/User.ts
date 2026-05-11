@@ -1,5 +1,6 @@
 import { Schema, model, Document, Types } from 'mongoose';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { UserRole } from '../types/index';
 
 export interface IUser extends Document {
@@ -22,6 +23,8 @@ export interface IUser extends Document {
   updatedAt: Date;
   comparePassword(password: string): Promise<boolean>;
   hashPassword(): Promise<void>;
+  generateEmailVerificationToken(): string;
+  verifyEmailToken(token: string): boolean;
 }
 
 const userSchema = new Schema<IUser>(
@@ -123,6 +126,32 @@ userSchema.methods.hashPassword = async function (): Promise<void> {
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
   }
+};
+
+userSchema.methods.generateEmailVerificationToken = function (): string {
+  const token = crypto.randomBytes(32).toString('hex');
+  const hash = crypto.createHash('sha256').update(token).digest('hex');
+  this.emailVerificationToken = hash;
+  this.emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  return token;
+};
+
+userSchema.methods.verifyEmailToken = function (token: string): boolean {
+  const hash = crypto.createHash('sha256').update(token).digest('hex');
+
+  if (!this.emailVerificationToken || this.emailVerificationToken !== hash) {
+    return false;
+  }
+
+  if (!this.emailVerificationExpires || new Date() > this.emailVerificationExpires) {
+    return false;
+  }
+
+  this.isEmailVerified = true;
+  this.emailVerificationToken = undefined;
+  this.emailVerificationExpires = undefined;
+
+  return true;
 };
 
 const User = model<IUser>('User', userSchema);
