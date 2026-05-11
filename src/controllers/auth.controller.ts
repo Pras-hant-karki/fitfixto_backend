@@ -11,6 +11,7 @@ import {
   forgotPasswordSchema,
   resetPasswordSchema,
   changePasswordSchema,
+  updateProfileSchema,
 } from '../validations/auth.validation';
 import User, { IUser } from '../models/User';
 import { RequestWithUser } from '../middlewares/auth';
@@ -372,4 +373,77 @@ const changePassword = asyncHandler(
   }
 );
 
-export { register, login, logout, getCurrentUser, verifyEmail, forgotPassword, resetPassword, changePassword };
+const updateProfile = asyncHandler(
+  async (req: RequestWithUser, res: Response): Promise<void> => {
+    if (!req.user) {
+      throw new AppError('Not authenticated', HTTP_STATUS.UNAUTHORIZED);
+    }
+
+    const validationResult = updateProfileSchema.safeParse(req.body);
+
+    if (!validationResult.success) {
+      const errors = validationResult.error.flatten().fieldErrors;
+      throw new AppError(
+        `Validation error: ${Object.values(errors)
+          .flat()
+          .join(', ')}`,
+        HTTP_STATUS.BAD_REQUEST
+      );
+    }
+
+    const { firstName, lastName, phone, bio, profilePicture } = validationResult.data;
+
+    const user = await User.findById(req.user._id);
+
+    if (!user) {
+      throw new AppError(
+        'User not found',
+        HTTP_STATUS.NOT_FOUND
+      );
+    }
+
+    // Check if phone is being updated and if it's unique
+    if (phone && phone !== user.phone) {
+      const existingUser = await User.findOne({ phone });
+      if (existingUser) {
+        throw new AppError(
+          'Phone number already registered',
+          HTTP_STATUS.CONFLICT
+        );
+      }
+    }
+
+    // Update fields if provided
+    if (firstName) user.firstName = firstName;
+    if (lastName) user.lastName = lastName;
+    if (phone) user.phone = phone;
+    if (bio !== undefined) user.bio = bio;
+    if (profilePicture) user.profilePicture = profilePicture;
+
+    await user.save();
+
+    const userResponse = {
+      id: user._id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      phone: user.phone,
+      role: user.role,
+      profilePicture: user.profilePicture,
+      bio: user.bio,
+      isEmailVerified: user.isEmailVerified,
+      isActive: user.isActive,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
+
+    return sendSuccess(
+      res,
+      'Profile updated successfully',
+      { user: userResponse },
+      HTTP_STATUS.OK
+    ) as any;
+  }
+);
+
+export { register, login, logout, getCurrentUser, verifyEmail, forgotPassword, resetPassword, changePassword, updateProfile };

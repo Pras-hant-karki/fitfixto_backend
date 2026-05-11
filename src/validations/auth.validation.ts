@@ -70,3 +70,19 @@ export const changePasswordSchema = z.object({
 });
 
 export type ChangePasswordRequest = z.infer<typeof changePasswordSchema>;
+
+export const updateProfileSchema = z.object({
+  firstName: z.string().min(2, 'First name must be at least 2 characters').max(50).optional(),
+  lastName: z.string().min(2, 'Last name must be at least 2 characters').max(50).optional(),
+  phone: z
+    .string()
+    .regex(
+      /^[+]?[(]?[0-9]{3}[)]?[-\s.]?[0-9]{3}[-\s.]?[0-9]{4,6}$/,
+      'Invalid phone number'
+    )
+    .optional(),
+  bio: z.string().max(500, 'Bio must be at most 500 characters').optional(),
+  profilePicture: z.string().url('Invalid profile picture URL').optional(),
+});
+
+export type UpdateProfileRequest = z.infer<typeof updateProfileSchema>;

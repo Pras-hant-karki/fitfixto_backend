@@ -8,6 +8,7 @@ import {
   forgotPassword,
   resetPassword,
   changePassword,
+  updateProfile,
 } from '../controllers/auth.controller';
 import { authenticate } from '../middlewares/auth';
 
@@ -17,6 +18,7 @@ authRouter.post('/register', register);
 authRouter.post('/login', login);
 authRouter.post('/logout', authenticate, logout);
 authRouter.get('/me', authenticate, getCurrentUser);
+authRouter.put('/profile', authenticate, updateProfile);
 authRouter.post('/verify-email', verifyEmail);
 authRouter.post('/forgot-password', forgotPassword);
 authRouter.post('/reset-password', resetPassword);
