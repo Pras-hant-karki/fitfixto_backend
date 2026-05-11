@@ -25,6 +25,8 @@ export interface IUser extends Document {
   hashPassword(): Promise<void>;
   generateEmailVerificationToken(): string;
   verifyEmailToken(token: string): boolean;
+  generatePasswordResetToken(): string;
+  verifyResetPasswordToken(token: string): boolean;
 }
 
 const userSchema = new Schema<IUser>(
@@ -150,6 +152,28 @@ userSchema.methods.verifyEmailToken = function (token: string): boolean {
   this.isEmailVerified = true;
   this.emailVerificationToken = undefined;
   this.emailVerificationExpires = undefined;
+
+  return true;
+};
+
+userSchema.methods.generatePasswordResetToken = function (): string {
+  const token = crypto.randomBytes(32).toString('hex');
+  const hash = crypto.createHash('sha256').update(token).digest('hex');
+  this.resetPasswordToken = hash;
+  this.resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000);
+  return token;
+};
+
+userSchema.methods.verifyResetPasswordToken = function (token: string): boolean {
+  const hash = crypto.createHash('sha256').update(token).digest('hex');
+
+  if (!this.resetPasswordToken || this.resetPasswordToken !== hash) {
+    return false;
+  }
+
+  if (!this.resetPasswordExpires || new Date() > this.resetPasswordExpires) {
+    return false;
+  }
 
   return true;
 };

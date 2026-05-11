@@ -1,5 +1,14 @@
 import { Router } from 'express';
-import { register, login, logout, getCurrentUser } from '../controllers/auth.controller';
+import {
+  register,
+  login,
+  logout,
+  getCurrentUser,
+  verifyEmail,
+  forgotPassword,
+  resetPassword,
+  changePassword,
+} from '../controllers/auth.controller';
 import { authenticate } from '../middlewares/auth';
 
 const authRouter = Router();
@@ -8,5 +17,9 @@ authRouter.post('/register', register);
 authRouter.post('/login', login);
 authRouter.post('/logout', authenticate, logout);
 authRouter.get('/me', authenticate, getCurrentUser);
+authRouter.post('/verify-email', verifyEmail);
+authRouter.post('/forgot-password', forgotPassword);
+authRouter.post('/reset-password', resetPassword);
+authRouter.post('/change-password', authenticate, changePassword);
 
 export default authRouter;

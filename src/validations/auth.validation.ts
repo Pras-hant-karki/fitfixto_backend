@@ -35,3 +35,38 @@ export const refreshTokenSchema = z.object({
 });
 
 export type RefreshTokenRequest = z.infer<typeof refreshTokenSchema>;
+
+export const verifyEmailSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  token: z.string().min(1, 'Verification token is required'),
+});
+
+export type VerifyEmailRequest = z.infer<typeof verifyEmailSchema>;
+
+export const forgotPasswordSchema = z.object({
+  email: z.string().email('Invalid email address'),
+});
+
+export type ForgotPasswordRequest = z.infer<typeof forgotPasswordSchema>;
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(1, 'Reset token is required'),
+  password: z.string().min(6, 'Password must be at least 6 characters').max(100),
+  confirmPassword: z.string(),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: 'Passwords do not match',
+  path: ['confirmPassword'],
+});
+
+export type ResetPasswordRequest = z.infer<typeof resetPasswordSchema>;
+
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(6, 'Current password is required'),
+  newPassword: z.string().min(6, 'New password must be at least 6 characters').max(100),
+  confirmPassword: z.string(),
+}).refine((data) => data.newPassword === data.confirmPassword, {
+  message: 'Passwords do not match',
+  path: ['confirmPassword'],
+});
+
+export type ChangePasswordRequest = z.infer<typeof changePasswordSchema>;
