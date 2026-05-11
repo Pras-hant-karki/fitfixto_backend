@@ -1,88 +1,116 @@
 import { z } from 'zod';
 import { UserRole } from '../types/index';
 
-export const registerSchema = z.object({
-  firstName: z.string().min(2, 'First name must be at least 2 characters').max(50),
-  lastName: z.string().min(2, 'Last name must be at least 2 characters').max(50),
-  email: z.string().email('Invalid email address'),
-  phone: z
-    .string()
-    .regex(
-      /^[+]?[(]?[0-9]{3}[)]?[-\s.]?[0-9]{3}[-\s.]?[0-9]{4,6}$/,
-      'Invalid phone number'
-    ),
-  password: z.string().min(6, 'Password must be at least 6 characters').max(100),
-  confirmPassword: z.string(),
-  role: z
-    .enum([UserRole.CUSTOMER, UserRole.TRAINER, UserRole.SELLER])
-    .default(UserRole.CUSTOMER),
-}).refine((data) => data.password === data.confirmPassword, {
-  message: 'Passwords do not match',
-  path: ['confirmPassword'],
-});
+const phoneRegex = /^[+]?[(]?[0-9]{3}[)]?[-\s.]?[0-9]{3}[-\s.]?[0-9]{4,6}$/;
+
+const nameSchema = z.string().min(2, 'Must be at least 2 characters').max(50);
+
+export const emailSchema = z.string().email('Invalid email address');
+
+export const phoneSchema = z.string().regex(phoneRegex, 'Invalid phone number');
+
+export const passwordSchema = z
+  .string()
+  .min(6, 'Password must be at least 6 characters')
+  .max(100);
+
+export const tokenSchema = z.string().min(1, 'Token is required');
+
+const profilePictureSchema = z.string().url('Invalid profile picture URL');
+
+export const registerSchema = z
+  .object({
+    firstName: nameSchema.min(2, 'First name must be at least 2 characters'),
+    lastName: nameSchema.min(2, 'Last name must be at least 2 characters'),
+    email: emailSchema,
+    phone: phoneSchema,
+    password: passwordSchema,
+    confirmPassword: z.string(),
+    role: z
+      .enum([UserRole.CUSTOMER, UserRole.TRAINER, UserRole.SELLER])
+      .default(UserRole.CUSTOMER),
+  })
+  .strict()
+  .refine((data) => data.password === data.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+  });
 
 export type RegisterRequest = z.infer<typeof registerSchema>;
 
-export const loginSchema = z.object({
-  email: z.string().email('Invalid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
-});
+export const loginSchema = z
+  .object({
+    email: emailSchema,
+    password: passwordSchema,
+  })
+  .strict();
 
 export type LoginRequest = z.infer<typeof loginSchema>;
 
-export const refreshTokenSchema = z.object({
-  refreshToken: z.string().min(1, 'Refresh token is required'),
-});
+export const refreshTokenSchema = z
+  .object({
+    refreshToken: tokenSchema,
+  })
+  .strict();
 
 export type RefreshTokenRequest = z.infer<typeof refreshTokenSchema>;
 
-export const verifyEmailSchema = z.object({
-  email: z.string().email('Invalid email address'),
-  token: z.string().min(1, 'Verification token is required'),
-});
+export const verifyEmailSchema = z
+  .object({
+    email: emailSchema,
+    token: tokenSchema,
+  })
+  .strict();
 
 export type VerifyEmailRequest = z.infer<typeof verifyEmailSchema>;
 
-export const forgotPasswordSchema = z.object({
-  email: z.string().email('Invalid email address'),
-});
+export const forgotPasswordSchema = z
+  .object({
+    email: emailSchema,
+  })
+  .strict();
 
 export type ForgotPasswordRequest = z.infer<typeof forgotPasswordSchema>;
 
-export const resetPasswordSchema = z.object({
-  token: z.string().min(1, 'Reset token is required'),
-  password: z.string().min(6, 'Password must be at least 6 characters').max(100),
-  confirmPassword: z.string(),
-}).refine((data) => data.password === data.confirmPassword, {
-  message: 'Passwords do not match',
-  path: ['confirmPassword'],
-});
+export const resetPasswordSchema = z
+  .object({
+    token: tokenSchema,
+    password: passwordSchema,
+    confirmPassword: z.string(),
+  })
+  .strict()
+  .refine((data) => data.password === data.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+  });
 
 export type ResetPasswordRequest = z.infer<typeof resetPasswordSchema>;
 
-export const changePasswordSchema = z.object({
-  currentPassword: z.string().min(6, 'Current password is required'),
-  newPassword: z.string().min(6, 'New password must be at least 6 characters').max(100),
-  confirmPassword: z.string(),
-}).refine((data) => data.newPassword === data.confirmPassword, {
-  message: 'Passwords do not match',
-  path: ['confirmPassword'],
-});
+export const changePasswordSchema = z
+  .object({
+    currentPassword: passwordSchema,
+    newPassword: z
+      .string()
+      .min(6, 'New password must be at least 6 characters')
+      .max(100),
+    confirmPassword: z.string(),
+  })
+  .strict()
+  .refine((data) => data.newPassword === data.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+  });
 
 export type ChangePasswordRequest = z.infer<typeof changePasswordSchema>;
 
-export const updateProfileSchema = z.object({
-  firstName: z.string().min(2, 'First name must be at least 2 characters').max(50).optional(),
-  lastName: z.string().min(2, 'Last name must be at least 2 characters').max(50).optional(),
-  phone: z
-    .string()
-    .regex(
-      /^[+]?[(]?[0-9]{3}[)]?[-\s.]?[0-9]{3}[-\s.]?[0-9]{4,6}$/,
-      'Invalid phone number'
-    )
-    .optional(),
-  bio: z.string().max(500, 'Bio must be at most 500 characters').optional(),
-  profilePicture: z.string().url('Invalid profile picture URL').optional(),
-});
+export const updateProfileSchema = z
+  .object({
+    firstName: nameSchema.optional(),
+    lastName: nameSchema.optional(),
+    phone: phoneSchema.optional(),
+    bio: z.string().max(500, 'Bio must be at most 500 characters').optional(),
+    profilePicture: profilePictureSchema.optional(),
+  })
+  .strict();
 
 export type UpdateProfileRequest = z.infer<typeof updateProfileSchema>;
