@@ -6,6 +6,7 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { generateTokenPair } from '../utils/jwt';
 import { registerSchema, loginSchema } from '../validations/auth.validation';
 import User, { IUser } from '../models/User';
+import { RequestWithUser } from '../middlewares/auth';
 
 const register = asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const validationResult = registerSchema.safeParse(req.body);
@@ -131,4 +132,36 @@ const login = asyncHandler(async (req: Request, res: Response): Promise<void> =>
   ) as any;
 });
 
-export { register, login };
+const getCurrentUser = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  if (!req.user) {
+    throw new AppError('Not authenticated', HTTP_STATUS.UNAUTHORIZED);
+  }
+
+  return sendSuccess(
+    res,
+    'Current user fetched successfully',
+    {
+      user: {
+        id: req.user._id,
+        firstName: req.user.firstName,
+        lastName: req.user.lastName,
+        email: req.user.email,
+        phone: req.user.phone,
+        role: req.user.role,
+        profilePicture: req.user.profilePicture,
+        bio: req.user.bio,
+        isEmailVerified: req.user.isEmailVerified,
+        isActive: req.user.isActive,
+        createdAt: req.user.createdAt,
+        updatedAt: req.user.updatedAt,
+      },
+    },
+    HTTP_STATUS.OK
+  ) as any;
+});
+
+const logout = asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+  return sendSuccess(res, 'Logout successful', { loggedOut: true }, HTTP_STATUS.OK) as any;
+});
+
+export { register, login, logout, getCurrentUser };

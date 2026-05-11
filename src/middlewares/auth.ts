@@ -3,6 +3,7 @@ import { extractTokenFromRequest, verifyAccessToken } from '../utils/jwt';
 import User, { IUser } from '../models/User';
 import { AppError } from '../utils/appError';
 import { HTTP_STATUS } from '../constants/app.constants';
+import { UserRole } from '../types/index';
 
 export interface RequestWithUser extends Request {
   user?: IUser;
@@ -31,7 +32,7 @@ export const authenticate: RequestHandler = async (req: RequestWithUser, _res: R
   }
 };
 
-export const authorize = (...roles: string[]): RequestHandler => {
+export const authorize = (...roles: UserRole[]): RequestHandler => {
   return (req: RequestWithUser, _res: Response, next: NextFunction) => {
     const user = req.user;
 
