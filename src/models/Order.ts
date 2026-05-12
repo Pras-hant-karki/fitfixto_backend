@@ -22,6 +22,7 @@ export interface IOrder extends Document {
   discountAmount: number;
   totalAmount: number;
   notes?: string;
+  transactionId?: string;
   cancellationReason?: string;
   cancelledAt?: Date;
   createdAt: Date;
@@ -115,6 +116,11 @@ const orderSchema = new Schema<IOrder>(
     notes: {
       type: String,
       maxlength: 1000,
+    },
+    transactionId: {
+      type: String,
+      sparse: true,
+      index: true,
     },
     cancellationReason: {
       type: String,
