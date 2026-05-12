@@ -81,3 +81,29 @@ export const productIdParamSchema = z
   .strict();
 
 export type ProductIdParamRequest = z.infer<typeof productIdParamSchema>;
+
+export const productListQuerySchema = z
+  .object({
+    search: z.string().optional(),
+    category: z
+      .enum([
+        ProductCategory.GYM_EQUIPMENT,
+        ProductCategory.SUPPLEMENTS,
+        ProductCategory.ACCESSORIES,
+      ])
+      .optional(),
+    minPrice: z.coerce.number().nonnegative().optional(),
+    maxPrice: z.coerce.number().nonnegative().optional(),
+    isFeatured: z.coerce.boolean().optional(),
+    isActive: z.coerce.boolean().optional(),
+    page: z.coerce.number().int().min(1).optional().default(1),
+    limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+    sortBy: z
+      .enum(['createdAt', 'price', 'name', 'stock', 'updatedAt'])
+      .optional()
+      .default('createdAt'),
+    order: z.enum(['asc', 'desc']).optional().default('desc'),
+  })
+  .strict();
+
+export type ProductListQueryRequest = z.infer<typeof productListQuerySchema>;
