@@ -9,6 +9,7 @@ import Product from '../models/Product';
 import Order from '../models/Order';
 import DeliveryAddress from '../models/DeliveryAddress';
 import Voucher from '../models/Voucher';
+import { sendOrderConfirmationEmail } from '../services/emailService';
 import { OrderStatus, PaymentStatus } from '../types/index';
 import { PlaceOrderRequest } from '../validations/order.validation';
 
@@ -136,6 +137,15 @@ const placeOrder = asyncHandler(async (req: RequestWithUser, res: Response): Pro
   cart.items = [];
   await cart.save();
 
+  // send confirmation email (do not fail the request if email sending fails)
+  try {
+    if (req.user && req.user.email) {
+      await sendOrderConfirmationEmail(req.user.email, order);
+    }
+  } catch (err) {
+    console.error('Failed to send order confirmation email', err);
+  }
+
   return sendSuccess(
     res,
     'Order placed successfully',
@@ -157,6 +167,32 @@ const getOrder = asyncHandler(async (req: RequestWithUser, res: Response): Promi
   }
 
   return sendSuccess(res, 'Order fetched successfully', { order }, HTTP_STATUS.OK) as any;
+});
+
+const trackOrder = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  if (!req.user) {
+    throw new AppError('Not authenticated', HTTP_STATUS.UNAUTHORIZED);
+  }
+
+  const { orderId } = req.params;
+  const order = await Order.findOne({ _id: orderId, userId: req.user._id });
+
+  if (!order) {
+    throw new AppError('Order not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  // Basic tracking info
+  const tracking = {
+    orderId: order._id,
+    status: order.status,
+    paymentStatus: order.paymentStatus,
+    placedAt: order.createdAt,
+    lastUpdated: order.updatedAt,
+    cancelledAt: order.cancelledAt ?? null,
+    estimatedDelivery: null, // placeholder — integrate courier for real ETA
+  };
+
+  return sendSuccess(res, 'Order tracking', { tracking }, HTTP_STATUS.OK) as any;
 });
 
 const cancelOrder = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
@@ -197,4 +233,4 @@ const updatePaymentStatus = asyncHandler(async (_req: Request, res: Response): P
   return sendSuccess(res, 'Not implemented', { message: 'Use payment integration later' }, HTTP_STATUS.OK) as any;
 });
 
-export { placeOrder, getOrder, cancelOrder, updateOrderStatus, updatePaymentStatus };
+export { placeOrder, getOrder, cancelOrder, trackOrder, updateOrderStatus, updatePaymentStatus };

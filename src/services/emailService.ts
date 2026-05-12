@@ -127,3 +127,39 @@ export {
   sendWelcomeEmail,
   sendPasswordResetEmail,
 };
+
+const sendOrderConfirmationEmail = async (email: string, order: any, baseUrl?: string): Promise<void> => {
+  const orderUrl = baseUrl ? `${baseUrl}/orders/${order._id}` : '';
+
+  const itemsHtml = (order.items || [])
+    .map(
+      (it: any) => `<li>${it.productName} — Qty: ${it.quantity} — Price: ${it.unitPrice}</li>`
+    )
+    .join('');
+
+  const html = `
+    <html>
+      <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #007bff;">Order Confirmation — ${order._id}</h2>
+          <p>Thank you for your order! Here are the details:</p>
+          <ul>${itemsHtml}</ul>
+          <p><strong>Subtotal:</strong> ${order.subtotal}</p>
+          <p><strong>Discount:</strong> ${order.discountAmount}</p>
+          <p><strong>Total:</strong> ${order.totalAmount}</p>
+          ${orderUrl ? `<p>Track your order: <a href="${orderUrl}">${orderUrl}</a></p>` : ''}
+          <p style="color: #888; font-size: 12px;">If you have any questions, reply to this email.</p>
+        </div>
+      </body>
+    </html>
+  `;
+
+  await sendEmail({
+    to: email,
+    subject: `Order Confirmation — ${order._id}`,
+    html,
+    text: `Order ${order._id} confirmed. Total: ${order.totalAmount}`,
+  });
+};
+
+export { sendOrderConfirmationEmail };
