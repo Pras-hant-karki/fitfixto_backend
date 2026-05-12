@@ -94,6 +94,8 @@ export const productListQuerySchema = z
       .optional(),
     minPrice: z.coerce.number().nonnegative().optional(),
     maxPrice: z.coerce.number().nonnegative().optional(),
+    minRating: z.coerce.number().min(0).max(5).optional(),
+    maxRating: z.coerce.number().min(0).max(5).optional(),
     isFeatured: z.coerce.boolean().optional(),
     isActive: z.coerce.boolean().optional(),
     page: z.coerce.number().int().min(1).optional().default(1),
@@ -107,3 +109,20 @@ export const productListQuerySchema = z
   .strict();
 
 export type ProductListQueryRequest = z.infer<typeof productListQuerySchema>;
+
+export const compareProductsQuerySchema = z
+  .object({
+    ids: z
+      .string()
+      .min(1, 'ids is required')
+      .transform((value) => value.split(',').map((id) => id.trim()).filter(Boolean))
+      .refine((ids) => ids.length >= 2, {
+        message: 'At least 2 product IDs are required for comparison',
+      })
+      .refine((ids) => ids.length <= 4, {
+        message: 'You can compare up to 4 products at a time',
+      }),
+  })
+  .strict();
+
+export type CompareProductsQueryRequest = z.infer<typeof compareProductsQuerySchema>;

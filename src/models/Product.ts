@@ -24,6 +24,8 @@ export interface IProduct extends Document {
   isFeatured: boolean;
   isActive: boolean;
   verifiedBadge: boolean;
+  averageRating: number;
+  ratingCount: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -106,6 +108,17 @@ const productSchema = new Schema<IProduct>(
     verifiedBadge: {
       type: Boolean,
       default: false,
+    },
+    averageRating: {
+      type: Number,
+      min: [0, 'Average rating must be at least 0'],
+      max: [5, 'Average rating cannot exceed 5'],
+      default: 0,
+    },
+    ratingCount: {
+      type: Number,
+      min: [0, 'Rating count cannot be negative'],
+      default: 0,
     },
   },
   {

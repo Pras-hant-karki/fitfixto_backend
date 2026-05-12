@@ -5,14 +5,15 @@ import { HTTP_STATUS } from '../constants/app.constants';
 import Product from '../models/Product';
 import { RequestWithUser } from '../middlewares/auth';
 import { AppError } from '../utils/appError';
-import { ProductCategory, UserRole } from '../types/index';
-import { IProduct } from '../models/Product';
+import { ProductCategory } from '../types/index';
 
 type ProductQuery = {
   search?: string;
   category?: ProductCategory;
   minPrice?: number;
   maxPrice?: number;
+  minRating?: number;
+  maxRating?: number;
   isFeatured?: boolean;
   isActive?: boolean;
   page?: number;
@@ -20,8 +21,6 @@ type ProductQuery = {
   sortBy?: 'createdAt' | 'price' | 'name' | 'stock' | 'updatedAt';
   order?: 'asc' | 'desc';
 };
-
-const notImplemented = (res: Response) => sendError(res, 'Not implemented', 501);
 
 const createProduct = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
   if (!req.user) {
@@ -48,6 +47,8 @@ const listProducts = asyncHandler(async (req: Request, res: Response): Promise<v
     category,
     minPrice,
     maxPrice,
+    minRating,
+    maxRating,
     isFeatured,
     isActive,
     page = 1,
@@ -78,6 +79,20 @@ const listProducts = asyncHandler(async (req: Request, res: Response): Promise<v
 
   if (typeof maxPrice === 'number') {
     filter.price = { ...(filter.price as Record<string, unknown>), $lte: maxPrice };
+  }
+
+  if (typeof minRating === 'number') {
+    filter.averageRating = {
+      ...(filter.averageRating as Record<string, unknown>),
+      $gte: minRating,
+    };
+  }
+
+  if (typeof maxRating === 'number') {
+    filter.averageRating = {
+      ...(filter.averageRating as Record<string, unknown>),
+      $lte: maxRating,
+    };
   }
 
   if (typeof isFeatured === 'boolean') {
@@ -193,4 +208,34 @@ const uploadProductImages = asyncHandler(async (req: RequestWithUser, res: Respo
   ) as any;
 });
 
-export { createProduct, listProducts, getProduct, updateProduct, deleteProduct, uploadProductImages };
+const compareProducts = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  const idsInput = req.query.ids;
+  const ids = Array.isArray(idsInput) ? idsInput : idsInput;
+
+  const parsedIds = Array.isArray(ids)
+    ? ids
+    : String(ids)
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean);
+
+  const products = await Product.find({ _id: { $in: parsedIds } }).select(
+    'name price category brand stock averageRating ratingCount verifiedBadge discountPercentage weight dimensions images'
+  );
+
+  if (products.length < 2) {
+    throw new AppError('At least 2 valid products are required for comparison', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  return sendSuccess(
+    res,
+    'Products compared successfully',
+    {
+      comparedCount: products.length,
+      products,
+    },
+    HTTP_STATUS.OK
+  ) as any;
+});
+
+export { createProduct, listProducts, getProduct, updateProduct, deleteProduct, uploadProductImages, compareProducts };
