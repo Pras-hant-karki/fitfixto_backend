@@ -36,6 +36,7 @@ export const createProductSchema = z
     dimensions: productDimensionsSchema.optional(),
     isFeatured: z.boolean().optional().default(false),
     isActive: z.boolean().optional().default(true),
+    verifiedBadge: z.boolean().optional().default(false),
   })
   .strict();
 
@@ -67,6 +68,7 @@ export const updateProductSchema = z
     dimensions: productDimensionsSchema.optional(),
     isFeatured: z.boolean().optional(),
     isActive: z.boolean().optional(),
+    verifiedBadge: z.boolean().optional(),
   })
   .strict();
 
