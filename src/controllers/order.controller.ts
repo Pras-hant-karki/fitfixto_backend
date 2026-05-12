@@ -11,7 +11,12 @@ import DeliveryAddress from '../models/DeliveryAddress';
 import Voucher from '../models/Voucher';
 import { sendOrderConfirmationEmail } from '../services/emailService';
 import { OrderStatus, PaymentStatus } from '../types/index';
-import { PlaceOrderRequest } from '../validations/order.validation';
+import { PlaceOrderRequest, UpdateOrderStatusRequest } from '../validations/order.validation';
+import {
+  calculateEstimatedDeliveryDate,
+  buildDeliveryTimeline,
+  getDaysUntilDelivery,
+} from '../utils/deliveryUtils';
 
 type CartProduct = {
   _id: string;
@@ -181,15 +186,32 @@ const trackOrder = asyncHandler(async (req: RequestWithUser, res: Response): Pro
     throw new AppError('Order not found', HTTP_STATUS.NOT_FOUND);
   }
 
-  // Basic tracking info
+  // Build delivery timeline
+  const timeline = buildDeliveryTimeline(
+    order.createdAt,
+    order.status,
+    order.status !== OrderStatus.PENDING ? new Date(order.updatedAt) : undefined,
+    order.status === OrderStatus.SHIPPED ? new Date(order.updatedAt) : undefined,
+    order.deliveredAt
+  );
+
+  // Calculate days remaining until delivery
+  let daysUntilDelivery = null;
+  if (order.estimatedDeliveryDate && order.status !== OrderStatus.DELIVERED && order.status !== OrderStatus.CANCELLED) {
+    daysUntilDelivery = getDaysUntilDelivery(order.estimatedDeliveryDate);
+  }
+
   const tracking = {
     orderId: order._id,
     status: order.status,
     paymentStatus: order.paymentStatus,
     placedAt: order.createdAt,
     lastUpdated: order.updatedAt,
+    estimatedDeliveryDate: order.estimatedDeliveryDate ?? null,
+    daysUntilDelivery,
+    deliveredAt: order.deliveredAt ?? null,
     cancelledAt: order.cancelledAt ?? null,
-    estimatedDelivery: null, // placeholder — integrate courier for real ETA
+    timeline,
   };
 
   return sendSuccess(res, 'Order tracking', { tracking }, HTTP_STATUS.OK) as any;
@@ -225,8 +247,66 @@ const cancelOrder = asyncHandler(async (req: RequestWithUser, res: Response): Pr
   return sendSuccess(res, 'Order cancelled successfully', { order }, HTTP_STATUS.OK) as any;
 });
 
-const updateOrderStatus = asyncHandler(async (_req: Request, res: Response): Promise<void> => {
-  return sendSuccess(res, 'Not implemented', { message: 'Use admin order workflow later' }, HTTP_STATUS.OK) as any;
+const updateOrderStatus = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  if (!req.user) {
+    throw new AppError('Not authenticated', HTTP_STATUS.UNAUTHORIZED);
+  }
+
+  const { orderId } = req.params;
+  const { status } = req.body as UpdateOrderStatusRequest;
+
+  const order = await Order.findOne({ _id: orderId, userId: req.user._id });
+  if (!order) {
+    throw new AppError('Order not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  // Validate status transitions
+  const validTransitions: Record<OrderStatus, OrderStatus[]> = {
+    [OrderStatus.PENDING]: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
+    [OrderStatus.CONFIRMED]: [OrderStatus.SHIPPED, OrderStatus.CANCELLED],
+    [OrderStatus.SHIPPED]: [OrderStatus.DELIVERED],
+    [OrderStatus.DELIVERED]: [OrderStatus.RETURNED],
+    [OrderStatus.CANCELLED]: [],
+    [OrderStatus.RETURNED]: [],
+  };
+
+  if (!validTransitions[order.status].includes(status)) {
+    throw new AppError(
+      `Cannot transition from ${order.status} to ${status}`,
+      HTTP_STATUS.BAD_REQUEST
+    );
+  }
+
+  // Update status
+  order.status = status;
+
+  // Calculate estimated delivery date when order is confirmed
+  if (status === OrderStatus.CONFIRMED && !order.estimatedDeliveryDate) {
+    order.estimatedDeliveryDate = calculateEstimatedDeliveryDate(order.createdAt, status);
+  }
+
+  // Mark as delivered
+  if (status === OrderStatus.DELIVERED) {
+    order.deliveredAt = new Date();
+  }
+
+  await order.save();
+
+  const timeline = buildDeliveryTimeline(
+    order.createdAt,
+    order.status,
+    order.status !== OrderStatus.PENDING ? new Date(order.updatedAt) : undefined,
+    order.status === OrderStatus.SHIPPED ? new Date(order.updatedAt) : undefined,
+    order.deliveredAt
+  );
+
+  const response = {
+    order,
+    timeline,
+    message: `Order status updated to ${status}`,
+  };
+
+  return sendSuccess(res, `Order status updated to ${status}`, response, HTTP_STATUS.OK) as any;
 });
 
 const updatePaymentStatus = asyncHandler(async (_req: Request, res: Response): Promise<void> => {

@@ -25,6 +25,8 @@ export interface IOrder extends Document {
   transactionId?: string;
   cancellationReason?: string;
   cancelledAt?: Date;
+  estimatedDeliveryDate?: Date;
+  deliveredAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -127,6 +129,13 @@ const orderSchema = new Schema<IOrder>(
       maxlength: 1000,
     },
     cancelledAt: {
+      type: Date,
+    },
+    estimatedDeliveryDate: {
+      type: Date,
+      index: true,
+    },
+    deliveredAt: {
       type: Date,
     },
   },
