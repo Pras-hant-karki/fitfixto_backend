@@ -174,6 +174,18 @@ const getOrder = asyncHandler(async (req: RequestWithUser, res: Response): Promi
   return sendSuccess(res, 'Order fetched successfully', { order }, HTTP_STATUS.OK) as any;
 });
 
+const getMyOrders = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  if (!req.user) {
+    throw new AppError('Not authenticated', HTTP_STATUS.UNAUTHORIZED);
+  }
+
+  const orders = await Order.find({ userId: req.user._id })
+    .populate('deliveryAddressId')
+    .sort({ createdAt: -1 });
+
+  return sendSuccess(res, 'Orders fetched successfully', { orders }, HTTP_STATUS.OK) as any;
+});
+
 const trackOrder = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
   if (!req.user) {
     throw new AppError('Not authenticated', HTTP_STATUS.UNAUTHORIZED);
@@ -313,4 +325,48 @@ const updatePaymentStatus = asyncHandler(async (_req: Request, res: Response): P
   return sendSuccess(res, 'Not implemented', { message: 'Use payment integration later' }, HTTP_STATUS.OK) as any;
 });
 
-export { placeOrder, getOrder, cancelOrder, trackOrder, updateOrderStatus, updatePaymentStatus };
+const downloadInvoice = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  if (!req.user) {
+    throw new AppError('Not authenticated', HTTP_STATUS.UNAUTHORIZED);
+  }
+
+  const { orderId } = req.params;
+  const order = await Order.findOne({ _id: orderId, userId: req.user._id }).populate('deliveryAddressId');
+
+  if (!order) {
+    throw new AppError('Order not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  // Mock invoice data placeholder
+  const invoice = {
+    invoiceNumber: `INV-${order._id.toString().substring(0, 8).toUpperCase()}-${order.createdAt.getFullYear()}`,
+    invoiceDate: order.createdAt,
+    orderId: order._id,
+    orderDate: order.createdAt,
+    status: order.status,
+    paymentStatus: order.paymentStatus,
+    items: order.items.map((item) => ({
+      productId: item.productId,
+      productName: item.productName,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      lineTotal: item.lineTotal,
+    })),
+    subtotal: order.subtotal,
+    discountAmount: order.discountAmount,
+    discountCode: order.voucherCode ?? null,
+    totalAmount: order.totalAmount,
+    deliveryAddress: order.deliveryAddressId,
+    paymentMethod: order.paymentMethod,
+    transactionId: order.transactionId ?? null,
+    notes: order.notes ?? null,
+    generatedAt: new Date(),
+  };
+
+  // TODO: Integrate PDF generation library (e.g., pdfkit, puppeteer) to generate actual PDF file
+  // For now, return invoice data as JSON placeholder
+
+  return sendSuccess(res, 'Invoice generated', { invoice }, HTTP_STATUS.OK) as any;
+});
+
+export { placeOrder, getOrder, getMyOrders, cancelOrder, trackOrder, updateOrderStatus, updatePaymentStatus, downloadInvoice };

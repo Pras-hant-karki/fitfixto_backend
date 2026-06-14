@@ -17,6 +17,7 @@ const envSchema = z.object({
   EMAIL_USER: z.string().default(''),
   EMAIL_PASSWORD: z.string().default(''),
   EMAIL_FROM: z.string().default('noreply@fitfixto.com'),
+  FRONTEND_URL: z.string().url().default('http://localhost:3000'),
   UPLOAD_DIR: z.string().default('./uploads'),
   MAX_FILE_SIZE: z.coerce.number().int().positive().default(5242880),
 });

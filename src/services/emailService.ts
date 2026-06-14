@@ -32,9 +32,9 @@ const sendEmail = async (options: EmailOptions): Promise<void> => {
 const sendEmailVerificationEmail = async (
   email: string,
   verificationToken: string,
-  baseUrl: string
+  frontendUrl: string
 ): Promise<void> => {
-  const verificationLink = `${baseUrl}/api/v1/auth/verify-email?token=${verificationToken}`;
+  const verificationLink = `${frontendUrl.replace(/\/$/, '')}/verify-email?token=${verificationToken}&email=${encodeURIComponent(email)}`;
 
   const html = `
     <html>
@@ -89,9 +89,9 @@ const sendWelcomeEmail = async (firstName: string, email: string): Promise<void>
 const sendPasswordResetEmail = async (
   email: string,
   resetToken: string,
-  baseUrl: string
+  frontendUrl: string
 ): Promise<void> => {
-  const resetLink = `${baseUrl}/api/v1/auth/reset-password?token=${resetToken}`;
+  const resetLink = `${frontendUrl.replace(/\/$/, '')}/reset-password?token=${resetToken}`;
 
   const html = `
     <html>

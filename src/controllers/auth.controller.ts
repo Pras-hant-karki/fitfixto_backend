@@ -1,9 +1,11 @@
 import { Request, Response } from 'express';
+import crypto from 'crypto';
 import { HTTP_STATUS } from '../constants/app.constants';
 import { AppError } from '../utils/appError';
 import { sendSuccess, sendError } from '../utils/apiResponse';
 import { asyncHandler } from '../utils/asyncHandler';
 import { generateTokenPair } from '../utils/jwt';
+import env from '../config/env';
 import {
   registerSchema,
   loginSchema,
@@ -57,7 +59,16 @@ const register = asyncHandler(async (req: Request, res: Response): Promise<void>
     role,
   });
 
+  const verificationToken = newUser.generateEmailVerificationToken();
   await newUser.save();
+
+  let verificationEmailSent = true;
+  try {
+    await sendEmailVerificationEmail(newUser.email, verificationToken, env.FRONTEND_URL);
+  } catch (error) {
+    verificationEmailSent = false;
+    console.error('Failed to send verification email', error);
+  }
 
   const { accessToken, refreshToken } = generateTokenPair(
     newUser._id.toString(),
@@ -72,6 +83,7 @@ const register = asyncHandler(async (req: Request, res: Response): Promise<void>
     email: newUser.email,
     phone: newUser.phone,
     role: newUser.role,
+    isEmailVerified: newUser.isEmailVerified,
   };
 
   return sendSuccess(
@@ -79,6 +91,7 @@ const register = asyncHandler(async (req: Request, res: Response): Promise<void>
     'User registered successfully',
     {
       user: userResponse,
+      verificationEmailSent,
       tokens: {
         accessToken,
         refreshToken,
@@ -247,10 +260,8 @@ const forgotPassword = asyncHandler(
     const resetToken = user.generatePasswordResetToken();
     await user.save();
 
-    const baseUrl = req.protocol + '://' + req.get('host');
-
     try {
-      await sendPasswordResetEmail(user.email, resetToken, baseUrl);
+      await sendPasswordResetEmail(user.email, resetToken, env.FRONTEND_URL);
     } catch (error) {
       user.resetPasswordToken = undefined;
       user.resetPasswordExpires = undefined;
@@ -286,11 +297,10 @@ const resetPassword = asyncHandler(
     }
 
     const { token, password } = validationResult.data;
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
 
     const user = await User.findOne({
-      resetPasswordToken: {
-        $exists: true,
-      },
+      resetPasswordToken: hashedToken,
     }).select('+resetPasswordToken +resetPasswordExpires');
 
     if (!user) {
