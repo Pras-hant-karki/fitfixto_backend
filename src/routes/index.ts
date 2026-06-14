@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import healthRouter from './health.route';
+import adminRouter from './admin.route';
 import authRouter from './auth.route';
 import deliveryAddressRouter from './deliveryAddress.route';
 import productRouter from './product.route';
@@ -12,6 +13,7 @@ import paymentRouter from './payment.route';
 const apiRouter = Router();
 
 apiRouter.use('/health', healthRouter);
+apiRouter.use('/admin', adminRouter);
 apiRouter.use('/auth', authRouter);
 apiRouter.use('/delivery-addresses', deliveryAddressRouter);
 apiRouter.use('/products', productRouter);

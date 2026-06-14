@@ -15,6 +15,7 @@ const envSchema = z.object({
   EMAIL_HOST: z.string().default('smtp.gmail.com'),
   EMAIL_PORT: z.coerce.number().int().positive().default(587),
   EMAIL_USER: z.string().default(''),
+  EMAIL_PASS: z.string().default(''),
   EMAIL_PASSWORD: z.string().default(''),
   EMAIL_FROM: z.string().default('noreply@fitfixto.com'),
   FRONTEND_URL: z.string().url().default('http://localhost:3000'),

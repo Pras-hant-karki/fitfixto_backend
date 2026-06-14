@@ -11,3 +11,14 @@ export const apiRateLimiter = rateLimit({
     message: 'Too many requests from this IP, please try again later.',
   },
 });
+
+export const adminLoginRateLimiter = rateLimit({
+  windowMs: RATE_LIMIT_CONFIG.WINDOW_MS,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many admin login attempts. Please try again later.',
+  },
+});

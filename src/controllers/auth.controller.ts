@@ -128,6 +128,10 @@ const login = asyncHandler(async (req: Request, res: Response): Promise<void> =>
     throw new AppError('Invalid email or password', HTTP_STATUS.UNAUTHORIZED);
   }
 
+  if (user.role === 'admin') {
+    throw new AppError('Admin accounts must use the admin login page', HTTP_STATUS.FORBIDDEN);
+  }
+
   const { accessToken, refreshToken } = generateTokenPair(
     user._id.toString(),
     user.email,
@@ -148,6 +152,59 @@ const login = asyncHandler(async (req: Request, res: Response): Promise<void> =>
     'Login successful',
     {
       user: userResponse,
+      tokens: {
+        accessToken,
+        refreshToken,
+      },
+    },
+    HTTP_STATUS.OK
+  ) as any;
+});
+
+const adminLogin = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  const validationResult = loginSchema.safeParse(req.body);
+
+  if (!validationResult.success) {
+    const errors = validationResult.error.flatten().fieldErrors;
+    throw new AppError(
+      `Validation error: ${Object.values(errors)
+        .flat()
+        .join(', ')}`,
+      HTTP_STATUS.BAD_REQUEST
+    );
+  }
+
+  const { email, password } = validationResult.data;
+  const user = await User.findOne({ email }).select('+password');
+
+  if (!user || user.role !== 'admin') {
+    throw new AppError('Invalid admin credentials', HTTP_STATUS.UNAUTHORIZED);
+  }
+
+  const isPasswordValid = await user.comparePassword(password);
+
+  if (!isPasswordValid) {
+    throw new AppError('Invalid admin credentials', HTTP_STATUS.UNAUTHORIZED);
+  }
+
+  const { accessToken, refreshToken } = generateTokenPair(
+    user._id.toString(),
+    user.email,
+    user.role
+  );
+
+  return sendSuccess(
+    res,
+    'Admin login successful',
+    {
+      user: {
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+      },
       tokens: {
         accessToken,
         refreshToken,
@@ -254,6 +311,13 @@ const forgotPassword = asyncHandler(
       throw new AppError(
         'No user found with this email address',
         HTTP_STATUS.NOT_FOUND
+      );
+    }
+
+    if (user.role === 'admin') {
+      throw new AppError(
+        'Admin password reset is disabled. Reset admin passwords directly from the database.',
+        HTTP_STATUS.FORBIDDEN
       );
     }
 
@@ -495,4 +559,4 @@ const uploadProfileImage = asyncHandler(
   }
 );
 
-export { register, login, logout, getCurrentUser, verifyEmail, forgotPassword, resetPassword, changePassword, updateProfile, uploadProfileImage };
+export { register, login, adminLogin, logout, getCurrentUser, verifyEmail, forgotPassword, resetPassword, changePassword, updateProfile, uploadProfileImage };
