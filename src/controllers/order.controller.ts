@@ -186,6 +186,19 @@ const getMyOrders = asyncHandler(async (req: RequestWithUser, res: Response): Pr
   return sendSuccess(res, 'Orders fetched successfully', { orders }, HTTP_STATUS.OK) as any;
 });
 
+const getAllOrders = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  if (!req.user) {
+    throw new AppError('Not authenticated', HTTP_STATUS.UNAUTHORIZED);
+  }
+
+  const orders = await Order.find()
+    .populate('userId', 'firstName lastName email')
+    .populate('deliveryAddressId')
+    .sort({ createdAt: -1 });
+
+  return sendSuccess(res, 'Orders fetched successfully', { orders }, HTTP_STATUS.OK) as any;
+});
+
 const trackOrder = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
   if (!req.user) {
     throw new AppError('Not authenticated', HTTP_STATUS.UNAUTHORIZED);
@@ -369,4 +382,4 @@ const downloadInvoice = asyncHandler(async (req: RequestWithUser, res: Response)
   return sendSuccess(res, 'Invoice generated', { invoice }, HTTP_STATUS.OK) as any;
 });
 
-export { placeOrder, getOrder, getMyOrders, cancelOrder, trackOrder, updateOrderStatus, updatePaymentStatus, downloadInvoice };
+export { placeOrder, getOrder, getMyOrders, getAllOrders, cancelOrder, trackOrder, updateOrderStatus, updatePaymentStatus, downloadInvoice };

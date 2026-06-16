@@ -1,6 +1,7 @@
 import { Router } from 'express';
-import { placeOrder, getOrder, getMyOrders, cancelOrder, trackOrder, updateOrderStatus, updatePaymentStatus, downloadInvoice } from '../controllers/order.controller';
-import { authenticate } from '../middlewares/auth';
+import { placeOrder, getOrder, getMyOrders, getAllOrders, cancelOrder, trackOrder, updateOrderStatus, updatePaymentStatus, downloadInvoice } from '../controllers/order.controller';
+import { authenticate, authorize } from '../middlewares/auth';
+import { UserRole } from '../types/index';
 import { validateBody, validateParams } from '../middlewares/validation';
 import {
 	placeOrderSchema,
@@ -15,6 +16,7 @@ const router = Router();
 router.use(authenticate);
 
 router.get('/my-orders', getMyOrders);
+router.get('/admin/all', authorize(UserRole.ADMIN), getAllOrders);
 router.post('/', validateBody(placeOrderSchema), placeOrder);
 router.post('/place', validateBody(placeOrderSchema), placeOrder);
 router.get('/:orderId', validateParams(orderIdParamSchema), getOrder);
