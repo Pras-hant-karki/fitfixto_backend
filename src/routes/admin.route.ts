@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { adminLogin } from '../controllers/auth.controller';
-import { deleteUser, listUsers, updateUserStatus } from '../controllers/admin.controller';
+import { deleteUser, getAnalytics, listUsers, updateUserStatus } from '../controllers/admin.controller';
 import { authenticate, authorize } from '../middlewares/auth';
 import { adminLoginRateLimiter } from '../middlewares/rateLimiter';
 import { UserRole } from '../types/index';
@@ -11,5 +11,6 @@ adminRouter.post('/login', adminLoginRateLimiter, adminLogin);
 adminRouter.get('/users', authenticate, authorize(UserRole.ADMIN), listUsers);
 adminRouter.patch('/users/:userId/status', authenticate, authorize(UserRole.ADMIN), updateUserStatus);
 adminRouter.delete('/users/:userId', authenticate, authorize(UserRole.ADMIN), deleteUser);
+adminRouter.get('/analytics', authenticate, authorize(UserRole.ADMIN), getAnalytics);
 
 export default adminRouter;

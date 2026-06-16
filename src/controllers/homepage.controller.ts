@@ -63,6 +63,24 @@ const updatePromotionalBanner = asyncHandler(async (req: RequestWithUser, res: R
   return sendSuccess(res, 'Promotional banner updated successfully', { settings }, HTTP_STATUS.OK) as any;
 });
 
+const updateSectionOrder = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const settings = await getOrCreateHomepageSettings();
+  const { sectionOrder } = req.body as { sectionOrder?: Array<{ id: string; label: string }> };
+
+  if (!Array.isArray(sectionOrder) || sectionOrder.length === 0) {
+    throw new AppError('sectionOrder must be a non-empty array', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  settings.sectionOrder = sectionOrder.map((item) => ({
+    id: item.id,
+    label: item.label,
+  }));
+
+  await settings.save();
+
+  return sendSuccess(res, 'Homepage section order updated successfully', { settings }, HTTP_STATUS.OK) as any;
+});
+
 const uploadHomepageImage = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
   if (!req.file) {
     throw new AppError('No homepage image uploaded', HTTP_STATUS.BAD_REQUEST);
@@ -77,4 +95,4 @@ const uploadHomepageImage = asyncHandler(async (req: RequestWithUser, res: Respo
   return sendSuccess(res, 'Homepage image uploaded successfully', { image }, HTTP_STATUS.OK) as any;
 });
 
-export { getHomepageSettings, updateHeroBanner, updatePromotionalBanner, uploadHomepageImage };
+export { getHomepageSettings, updateHeroBanner, updatePromotionalBanner, updateSectionOrder, uploadHomepageImage };

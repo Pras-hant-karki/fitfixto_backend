@@ -20,10 +20,16 @@ export interface IHomepagePromotionalBanner {
   fontSize: number;
 }
 
+export interface IHomepageSectionOrderItem {
+  id: string;
+  label: string;
+}
+
 export interface IHomepageSettings extends Document {
   _id: Types.ObjectId;
   hero: IHomepageHero;
   promotionalBanner: IHomepagePromotionalBanner;
+  sectionOrder: IHomepageSectionOrderItem[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -58,6 +64,14 @@ const homepagePromotionalBannerSchema = new Schema<IHomepagePromotionalBanner>(
   { _id: false }
 );
 
+const homepageSectionOrderSchema = new Schema<IHomepageSectionOrderItem>(
+  {
+    id: { type: String, required: true, trim: true },
+    label: { type: String, required: true, trim: true },
+  },
+  { _id: false }
+);
+
 const homepageSettingsSchema = new Schema<IHomepageSettings>(
   {
     hero: {
@@ -67,6 +81,15 @@ const homepageSettingsSchema = new Schema<IHomepageSettings>(
     promotionalBanner: {
       type: homepagePromotionalBannerSchema,
       default: () => ({}),
+    },
+    sectionOrder: {
+      type: [homepageSectionOrderSchema],
+      default: () => [
+        { id: 'featured-products', label: 'Featured Products' },
+        { id: 'featured-services', label: 'Featured Services' },
+        { id: 'promotional-banner', label: 'Promotional Banner' },
+        { id: 'featured-trainers', label: 'Featured Trainers' },
+      ],
     },
   },
   { timestamps: true }
