@@ -112,4 +112,18 @@ const deleteTrainer = asyncHandler(async (req: RequestWithUser, res: Response): 
   return sendSuccess(res, 'Trainer deleted successfully', { trainerId }, HTTP_STATUS.OK) as any;
 });
 
-export { listTrainers, createTrainer, updateTrainer, deleteTrainer };
+const uploadTrainerPhoto = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  if (!req.file) {
+    throw new AppError('No trainer photo uploaded', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  const photo = {
+    filename: req.file.filename,
+    path: `/uploads/${req.file.filename}`,
+    mimetype: req.file.mimetype,
+  };
+
+  return sendSuccess(res, 'Trainer photo uploaded successfully', { photo }, HTTP_STATUS.OK) as any;
+});
+
+export { listTrainers, createTrainer, updateTrainer, deleteTrainer, uploadTrainerPhoto };
