@@ -24,7 +24,7 @@ export const createProductSchema = z
       ProductCategory.ACCESSORIES,
     ]),
     brand: z.string().min(2, 'Brand must be at least 2 characters').max(100).optional(),
-    images: z.array(imageUrlSchema).min(1, 'At least one product image is required'),
+    images: z.array(imageUrlSchema).optional().default([]),
     tags: z.array(z.string().min(1)).optional(),
     sku: z.string().min(2, 'SKU must be at least 2 characters').max(100).optional(),
     discountPercentage: z
@@ -56,7 +56,7 @@ export const updateProductSchema = z
       ])
       .optional(),
     brand: z.string().min(2, 'Brand must be at least 2 characters').max(100).optional(),
-    images: z.array(imageUrlSchema).min(1, 'At least one product image is required').optional(),
+    images: z.array(imageUrlSchema).optional(),
     tags: z.array(z.string().min(1)).optional(),
     sku: z.string().min(2, 'SKU must be at least 2 characters').max(100).optional(),
     discountPercentage: z
