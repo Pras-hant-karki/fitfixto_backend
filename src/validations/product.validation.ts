@@ -1,7 +1,21 @@
 import { z } from 'zod';
 import { ProductCategory } from '../types/index';
 
-const imageUrlSchema = z.string().url('Invalid image URL');
+const imageUrlSchema = z.string().refine(
+  (value) => {
+    if (!value.trim()) {
+      return false;
+    }
+
+    try {
+      const url = new URL(value);
+      return url.protocol === 'http:' || url.protocol === 'https:';
+    } catch {
+      return /^\/[A-Za-z0-9._~:/?#[\]@!$&'()*+,;=%-]+$/.test(value);
+    }
+  },
+  { message: 'Invalid image URL' }
+);
 
 const productDimensionsSchema = z
   .object({

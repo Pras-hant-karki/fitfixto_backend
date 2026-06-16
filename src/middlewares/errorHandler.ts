@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import multer from 'multer';
 import { HTTP_STATUS } from '../constants/app.constants';
 import { sendError } from '../utils/apiResponse';
 import { AppError } from '../utils/appError';
@@ -13,6 +14,18 @@ const errorHandler = (
 
   if (err instanceof AppError) {
     sendError(res, err.message, err.statusCode, isDevelopment ? err.stack : undefined);
+    return;
+  }
+
+  if (err instanceof multer.MulterError) {
+    const message =
+      err.code === 'LIMIT_FILE_SIZE'
+        ? 'Uploaded image is too large. Please choose an image under the configured file size limit.'
+        : err.code === 'LIMIT_UNEXPECTED_FILE'
+          ? 'Unexpected upload field. Please upload product images using the images field.'
+          : err.message;
+
+    sendError(res, message, HTTP_STATUS.BAD_REQUEST, isDevelopment ? err.stack : undefined);
     return;
   }
 

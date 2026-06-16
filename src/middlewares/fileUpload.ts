@@ -3,9 +3,10 @@ import path from 'path';
 import fs from 'fs';
 import env from '../config/env';
 import { AppError } from '../utils/appError';
+import { resolveUploadDir } from '../utils/uploadPath';
 import { HTTP_STATUS } from '../constants/app.constants';
 
-const uploadDir = env.UPLOAD_DIR;
+const uploadDir = resolveUploadDir(env.UPLOAD_DIR);
 
 // Create upload directory if it doesn't exist
 if (!fs.existsSync(uploadDir)) {
