@@ -26,6 +26,17 @@ const productDimensionsSchema = z
   .strict()
   .partial();
 
+const productCategoryListSchema = z
+  .string()
+  .min(1)
+  .transform((value) => value.split(',').map((category) => category.trim()).filter(Boolean))
+  .refine(
+    (categories) =>
+      categories.length > 0 &&
+      categories.every((category) => Object.values(ProductCategory).includes(category as ProductCategory)),
+    { message: 'Invalid product category' }
+  );
+
 export const createProductSchema = z
   .object({
     name: z.string().min(2, 'Product name must be at least 2 characters').max(150),
@@ -99,13 +110,8 @@ export type ProductIdParamRequest = z.infer<typeof productIdParamSchema>;
 export const productListQuerySchema = z
   .object({
     search: z.string().optional(),
-    category: z
-      .enum([
-        ProductCategory.GYM_EQUIPMENT,
-        ProductCategory.SUPPLEMENTS,
-        ProductCategory.ACCESSORIES,
-      ])
-      .optional(),
+    category: productCategoryListSchema.optional(),
+    brand: z.string().min(1).optional(),
     minPrice: z.coerce.number().nonnegative().optional(),
     maxPrice: z.coerce.number().nonnegative().optional(),
     minRating: z.coerce.number().min(0).max(5).optional(),
@@ -119,6 +125,20 @@ export const productListQuerySchema = z
       .optional()
       .default('createdAt'),
     order: z.enum(['asc', 'desc']).optional().default('desc'),
+    sort: z
+      .enum([
+        'price_asc',
+        'price_desc',
+        'name_asc',
+        'name_desc',
+        'stock_asc',
+        'stock_desc',
+        'createdAt_asc',
+        'createdAt_desc',
+        'updatedAt_asc',
+        'updatedAt_desc',
+      ])
+      .optional(),
   })
   .strict();
 

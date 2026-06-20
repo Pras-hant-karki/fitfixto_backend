@@ -5,11 +5,12 @@ import { HTTP_STATUS } from '../constants/app.constants';
 import Product from '../models/Product';
 import { RequestWithUser } from '../middlewares/auth';
 import { AppError } from '../utils/appError';
-import { ProductCategory } from '../types/index';
+import { ProductCategory, UserRole } from '../types/index';
 
 type ProductQuery = {
   search?: string;
-  category?: ProductCategory;
+  category?: ProductCategory[];
+  brand?: string;
   minPrice?: number;
   maxPrice?: number;
   minRating?: number;
@@ -20,7 +21,10 @@ type ProductQuery = {
   limit?: number;
   sortBy?: 'createdAt' | 'price' | 'name' | 'stock' | 'updatedAt';
   order?: 'asc' | 'desc';
+  sort?: `${'price' | 'name' | 'stock' | 'createdAt' | 'updatedAt'}_${'asc' | 'desc'}`;
 };
+
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const createProduct = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
   if (!req.user) {
@@ -41,10 +45,11 @@ const createProduct = asyncHandler(async (req: RequestWithUser, res: Response): 
   ) as any;
 });
 
-const listProducts = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+const listProducts = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
   const {
     search,
     category,
+    brand,
     minPrice,
     maxPrice,
     minRating,
@@ -55,6 +60,7 @@ const listProducts = asyncHandler(async (req: Request, res: Response): Promise<v
     limit = 20,
     sortBy = 'createdAt',
     order = 'desc',
+    sort,
   } = req.query as unknown as ProductQuery;
 
   const filter: Record<string, unknown> = {};
@@ -69,8 +75,21 @@ const listProducts = asyncHandler(async (req: Request, res: Response): Promise<v
     ];
   }
 
-  if (category) {
-    filter.category = category;
+  if (category?.length) {
+    filter.category = { $in: category };
+  }
+
+  if (brand) {
+    const brands = brand
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+    if (brands.length === 1) {
+      filter.brand = { $regex: `^${escapeRegExp(brands[0])}$`, $options: 'i' };
+    } else if (brands.length > 1) {
+      filter.brand = { $in: brands.map((value) => new RegExp(`^${escapeRegExp(value)}$`, 'i')) };
+    }
   }
 
   if (typeof minPrice === 'number') {
@@ -99,15 +118,22 @@ const listProducts = asyncHandler(async (req: Request, res: Response): Promise<v
     filter.isFeatured = isFeatured;
   }
 
-  if (typeof isActive === 'boolean') {
+  const isAdmin = req.user?.role === UserRole.ADMIN;
+
+  if (typeof isActive === 'boolean' && isAdmin) {
     filter.isActive = isActive;
+  } else if (!isAdmin) {
+    filter.isActive = true;
   }
 
   const skip = (page - 1) * limit;
-  const sortDirection = order === 'asc' ? 1 : -1;
+  const [sortFieldFromParam, sortOrderFromParam] = sort ? sort.split('_') : [];
+  const finalSortBy = (sortFieldFromParam || sortBy) as NonNullable<ProductQuery['sortBy']>;
+  const finalOrder = (sortOrderFromParam || order) as NonNullable<ProductQuery['order']>;
+  const sortDirection = finalOrder === 'asc' ? 1 : -1;
 
   const [products, total] = await Promise.all([
-    Product.find(filter).sort({ [sortBy]: sortDirection }).skip(skip).limit(limit),
+    Product.find(filter).sort({ [finalSortBy]: sortDirection }).skip(skip).limit(limit),
     Product.countDocuments(filter),
   ]);
 

@@ -16,14 +16,14 @@ import {
   productListQuerySchema,
   compareProductsQuerySchema,
 } from '../validations/product.validation';
-import { authenticate, authorize } from '../middlewares/auth';
+import { authenticate, authorize, optionalAuthenticate } from '../middlewares/auth';
 import { uploadProductImages as uploadProductImagesMiddleware } from '../middlewares/fileUpload';
 import { UserRole } from '../types/index';
 
 const router = Router();
 
 router.post('/', authenticate, authorize(UserRole.ADMIN), validateBody(createProductSchema), createProduct);
-router.get('/', validateQuery(productListQuerySchema), listProducts);
+router.get('/', optionalAuthenticate, validateQuery(productListQuerySchema), listProducts);
 router.get('/compare', validateQuery(compareProductsQuerySchema), compareProducts);
 router.get('/:productId', validateParams(productIdParamSchema), getProduct);
 router.put('/:productId', authenticate, authorize(UserRole.ADMIN), validateParams(productIdParamSchema), validateBody(updateProductSchema), updateProduct);
