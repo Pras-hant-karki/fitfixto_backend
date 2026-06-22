@@ -128,6 +128,30 @@ export {
   sendPasswordResetEmail,
 };
 
+const sendTrainerCredentialsEmail = async (email: string, password: string): Promise<void> => {
+  const html = `
+    <html>
+      <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #007bff;">FitFIXto Trainer Login Password</h2>
+          <p>Your trainer account has been created.</p>
+          <p><strong>Password:</strong> ${password}</p>
+          <p>Please log in with your email and this password, then change your password from your profile.</p>
+        </div>
+      </body>
+    </html>
+  `;
+
+  await sendEmail({
+    to: email,
+    subject: 'Your FitFIXto Trainer Password',
+    html,
+    text: `Password: ${password}`,
+  });
+};
+
+export { sendTrainerCredentialsEmail };
+
 const sendOrderConfirmationEmail = async (email: string, order: any, baseUrl?: string): Promise<void> => {
   const orderUrl = baseUrl ? `${baseUrl}/orders/${order._id}` : '';
 

@@ -5,9 +5,11 @@ import { HTTP_STATUS } from '../constants/app.constants';
 import { AppError } from '../utils/appError';
 import { RequestWithUser } from '../middlewares/auth';
 import Trainer from '../models/Trainer';
+import TrainerApplication from '../models/TrainerApplication';
 import User from '../models/User';
 import { UserRole } from '../types/index';
-import { CreateTrainerRequest, UpdateTrainerRequest } from '../validations/trainer.validation';
+import { sendTrainerCredentialsEmail } from '../services/emailService';
+import { CreateTrainerRequest, TrainerApplicationRequest, UpdateTrainerRequest } from '../validations/trainer.validation';
 
 const buildTrainerPayload = (body: CreateTrainerRequest | UpdateTrainerRequest) => ({
   location: body.location,
@@ -50,11 +52,88 @@ const createTrainer = asyncHandler(async (req: RequestWithUser, res: Response): 
     });
 
     await trainer.populate('userId', 'firstName lastName email phone bio profilePicture isActive');
-    return sendSuccess(res, 'Trainer created successfully', { trainer }, HTTP_STATUS.CREATED) as any;
+    let credentialEmailSent = true;
+
+    try {
+      await sendTrainerCredentialsEmail(user.email, body.password);
+    } catch (emailError) {
+      credentialEmailSent = false;
+      console.error('Trainer credential email failed:', emailError);
+    }
+
+    if (body.applicationId) {
+      await TrainerApplication.findByIdAndUpdate(body.applicationId, {
+        status: 'approved',
+        reviewedAt: new Date(),
+        reviewedBy: req.user?._id,
+        createdTrainerId: trainer._id,
+      });
+    }
+
+    return sendSuccess(res, 'Trainer created successfully', { trainer, credentialEmailSent }, HTTP_STATUS.CREATED) as any;
   } catch (error) {
     await User.findByIdAndDelete(user._id);
     throw error;
   }
+});
+
+const createTrainerApplication = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const body = req.body as TrainerApplicationRequest;
+
+  const application = await TrainerApplication.create({
+    ...body,
+    phone: body.phone || undefined,
+    profilePicture: body.profilePicture || null,
+    status: 'pending',
+  });
+
+  return sendSuccess(res, 'Trainer application submitted successfully', { application }, HTTP_STATUS.CREATED) as any;
+});
+
+const listTrainerApplications = asyncHandler(async (_req: RequestWithUser, res: Response): Promise<void> => {
+  const applications = await TrainerApplication.find().sort({ createdAt: -1 });
+
+  return sendSuccess(res, 'Trainer applications fetched successfully', { applications }, HTTP_STATUS.OK) as any;
+});
+
+const approveTrainerApplication = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const { applicationId } = req.params;
+
+  const application = await TrainerApplication.findByIdAndUpdate(
+    applicationId,
+    {
+      status: 'approved',
+      reviewedAt: new Date(),
+      reviewedBy: req.user?._id,
+    },
+    { new: true, runValidators: true }
+  );
+
+  if (!application) {
+    throw new AppError('Trainer application not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  return sendSuccess(res, 'Trainer application approved', { application }, HTTP_STATUS.OK) as any;
+});
+
+const rejectTrainerApplication = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const { applicationId } = req.params;
+
+  const application = await TrainerApplication.findByIdAndUpdate(
+    applicationId,
+    {
+      status: 'rejected',
+      reviewedAt: new Date(),
+      reviewedBy: req.user?._id,
+    },
+    { new: true, runValidators: true }
+  );
+
+  if (!application) {
+    throw new AppError('Trainer application not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  return sendSuccess(res, 'Trainer application rejected', { application }, HTTP_STATUS.OK) as any;
 });
 
 const updateTrainer = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
@@ -126,4 +205,14 @@ const uploadTrainerPhoto = asyncHandler(async (req: RequestWithUser, res: Respon
   return sendSuccess(res, 'Trainer photo uploaded successfully', { photo }, HTTP_STATUS.OK) as any;
 });
 
-export { listTrainers, createTrainer, updateTrainer, deleteTrainer, uploadTrainerPhoto };
+export {
+  listTrainers,
+  createTrainer,
+  updateTrainer,
+  deleteTrainer,
+  uploadTrainerPhoto,
+  createTrainerApplication,
+  listTrainerApplications,
+  approveTrainerApplication,
+  rejectTrainerApplication,
+};
