@@ -41,6 +41,7 @@ export const createProductSchema = z
   .object({
     name: z.string().min(2, 'Product name must be at least 2 characters').max(150),
     description: z.string().min(10, 'Description must be at least 10 characters').max(2000),
+    specifications: z.string().max(2000, 'Specifications must be at most 2000 characters').optional(),
     price: z.number().positive('Price must be greater than 0'),
     stock: z.number().int().nonnegative('Stock cannot be negative'),
     category: z.enum([
@@ -71,6 +72,7 @@ export const updateProductSchema = z
   .object({
     name: z.string().min(2, 'Product name must be at least 2 characters').max(150).optional(),
     description: z.string().min(10, 'Description must be at least 10 characters').max(2000).optional(),
+    specifications: z.string().max(2000, 'Specifications must be at most 2000 characters').optional(),
     price: z.number().positive('Price must be greater than 0').optional(),
     stock: z.number().int().nonnegative('Stock cannot be negative').optional(),
     category: z
