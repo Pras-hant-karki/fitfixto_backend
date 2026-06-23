@@ -391,7 +391,7 @@ const updateOrderStatus = asyncHandler(async (req: RequestWithUser, res: Respons
   const { orderId } = req.params;
   const { status } = req.body as UpdateOrderStatusRequest;
 
-  const order = await Order.findOne({ _id: orderId, userId: req.user._id });
+  const order = await Order.findById(orderId);
   if (!order) {
     throw new AppError('Order not found', HTTP_STATUS.NOT_FOUND);
   }
