@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { Types } from 'mongoose';
 import { asyncHandler } from '../utils/asyncHandler';
 import { sendSuccess } from '../utils/apiResponse';
 import { HTTP_STATUS } from '../constants/app.constants';
@@ -9,9 +10,10 @@ import Product from '../models/Product';
 import Order from '../models/Order';
 import DeliveryAddress from '../models/DeliveryAddress';
 import Voucher from '../models/Voucher';
+import User from '../models/User';
 import { sendOrderConfirmationEmail } from '../services/emailService';
 import { OrderStatus, PaymentStatus } from '../types/index';
-import { PlaceOrderRequest, UpdateOrderStatusRequest } from '../validations/order.validation';
+import { AdminOrderListQueryRequest, PlaceOrderRequest, UpdateOrderStatusRequest } from '../validations/order.validation';
 import {
   calculateEstimatedDeliveryDate,
   buildDeliveryTimeline,
@@ -24,6 +26,22 @@ type CartProduct = {
   stock: number;
   name: string;
   category: string;
+};
+
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const expandAdminOrderStatuses = (statuses?: AdminOrderListQueryRequest['status']) => {
+  if (!statuses?.length || statuses.includes('all')) {
+    return [];
+  }
+
+  return statuses.flatMap((status) => {
+    if (status === 'processing') {
+      return [OrderStatus.CONFIRMED, OrderStatus.SHIPPED];
+    }
+
+    return [status as OrderStatus];
+  });
 };
 
 const placeOrder = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
@@ -191,12 +209,105 @@ const getAllOrders = asyncHandler(async (req: RequestWithUser, res: Response): P
     throw new AppError('Not authenticated', HTTP_STATUS.UNAUTHORIZED);
   }
 
-  const orders = await Order.find()
-    .populate('userId', 'firstName lastName email')
-    .populate('deliveryAddressId')
-    .sort({ createdAt: -1 });
+  const { status, search, page = 1, limit = 20 } = req.query as unknown as AdminOrderListQueryRequest;
+  const filter: Record<string, unknown> = {};
+  const statuses = expandAdminOrderStatuses(status);
 
-  return sendSuccess(res, 'Orders fetched successfully', { orders }, HTTP_STATUS.OK) as any;
+  if (statuses.length) {
+    filter.status = { $in: [...new Set(statuses)] };
+  }
+
+  if (search?.trim()) {
+    const searchTerm = search.trim();
+    const regex = new RegExp(escapeRegExp(searchTerm), 'i');
+    const orFilters: Record<string, unknown>[] = [
+      { 'items.productName': regex },
+      { notes: regex },
+      { voucherCode: regex },
+    ];
+
+    if (Types.ObjectId.isValid(searchTerm)) {
+      orFilters.push({ _id: new Types.ObjectId(searchTerm) });
+    }
+
+    const [matchingUsers, matchingAddresses] = await Promise.all([
+      User.find({
+        $or: [
+          { firstName: regex },
+          { lastName: regex },
+          { email: regex },
+          { phone: regex },
+        ],
+      }).select('_id'),
+      DeliveryAddress.find({
+        $or: [
+          { recipientName: regex },
+          { phone: regex },
+          { street: regex },
+          { city: regex },
+          { state: regex },
+          { postalCode: regex },
+          { country: regex },
+        ],
+      }).select('_id'),
+    ]);
+
+    if (matchingUsers.length) {
+      orFilters.push({ userId: { $in: matchingUsers.map((user) => user._id) } });
+    }
+
+    if (matchingAddresses.length) {
+      orFilters.push({ deliveryAddressId: { $in: matchingAddresses.map((address) => address._id) } });
+    }
+
+    filter.$or = orFilters;
+  }
+
+  const skip = (page - 1) * limit;
+  const [orders, total] = await Promise.all([
+    Order.find(filter)
+      .populate('userId', 'firstName lastName email phone')
+      .populate('deliveryAddressId')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit),
+    Order.countDocuments(filter),
+  ]);
+
+  return sendSuccess(
+    res,
+    'Orders fetched successfully',
+    {
+      orders,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        hasNextPage: page * limit < total,
+        hasPrevPage: page > 1,
+      },
+    },
+    HTTP_STATUS.OK
+  ) as any;
+});
+
+const getAdminOrder = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  if (!req.user) {
+    throw new AppError('Not authenticated', HTTP_STATUS.UNAUTHORIZED);
+  }
+
+  const { orderId } = req.params;
+  const order = await Order.findById(orderId)
+    .populate('userId', 'firstName lastName email phone')
+    .populate('deliveryAddressId')
+    .populate('items.productId', 'name price category brand images stock verifiedBadge');
+
+  if (!order) {
+    throw new AppError('Order not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  return sendSuccess(res, 'Order fetched successfully', { order }, HTTP_STATUS.OK) as any;
 });
 
 const trackOrder = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
@@ -382,4 +493,4 @@ const downloadInvoice = asyncHandler(async (req: RequestWithUser, res: Response)
   return sendSuccess(res, 'Invoice generated', { invoice }, HTTP_STATUS.OK) as any;
 });
 
-export { placeOrder, getOrder, getMyOrders, getAllOrders, cancelOrder, trackOrder, updateOrderStatus, updatePaymentStatus, downloadInvoice };
+export { placeOrder, getOrder, getAdminOrder, getMyOrders, getAllOrders, cancelOrder, trackOrder, updateOrderStatus, updatePaymentStatus, downloadInvoice };

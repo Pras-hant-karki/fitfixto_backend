@@ -53,6 +53,38 @@ export const updatePaymentStatusSchema = z
 
 export type UpdatePaymentStatusRequest = z.infer<typeof updatePaymentStatusSchema>;
 
+const adminOrderStatusQuerySchema = z
+  .string()
+  .min(1)
+  .transform((value) => value.split(',').map((status) => status.trim()).filter(Boolean))
+  .refine(
+    (statuses) =>
+      statuses.every((status) =>
+        [
+          'all',
+          'processing',
+          OrderStatus.PENDING,
+          OrderStatus.CONFIRMED,
+          OrderStatus.SHIPPED,
+          OrderStatus.DELIVERED,
+          OrderStatus.CANCELLED,
+          OrderStatus.RETURNED,
+        ].includes(status)
+      ),
+    { message: 'Invalid order status' }
+  );
+
+export const adminOrderListQuerySchema = z
+  .object({
+    status: adminOrderStatusQuerySchema.optional(),
+    search: z.string().trim().optional(),
+    page: z.coerce.number().int().min(1).optional().default(1),
+    limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+  })
+  .strict();
+
+export type AdminOrderListQueryRequest = z.infer<typeof adminOrderListQuerySchema>;
+
 export const orderIdParamSchema = z
   .object({
     orderId: z.string().min(1, 'Order ID is required'),
