@@ -155,8 +155,8 @@ export const compareProductsQuerySchema = z
       .refine((ids) => ids.length >= 2, {
         message: 'At least 2 product IDs are required for comparison',
       })
-      .refine((ids) => ids.length <= 4, {
-        message: 'You can compare up to 4 products at a time',
+      .refine((ids) => ids.length <= 5, {
+        message: 'You can compare up to 5 products at a time',
       }),
   })
   .strict();
