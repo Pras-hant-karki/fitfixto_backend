@@ -246,7 +246,7 @@ const compareProducts = asyncHandler(async (req: Request, res: Response): Promis
         .filter(Boolean);
 
   const products = await Product.find({ _id: { $in: parsedIds } }).select(
-    'name description specifications price category brand stock tags averageRating ratingCount verifiedBadge discountPercentage weight dimensions images'
+    'name description specifications importedFrom warrantyMonths price category brand stock tags averageRating ratingCount verifiedBadge discountPercentage weight weightUnit dimensions images'
   );
 
   if (products.length < 2) {

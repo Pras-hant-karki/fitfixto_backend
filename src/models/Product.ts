@@ -12,6 +12,8 @@ export interface IProduct extends Document {
   name: string;
   description: string;
   specifications?: string;
+  importedFrom?: string;
+  warrantyMonths?: number;
   price: number;
   stock: number;
   category: ProductCategory;
@@ -21,6 +23,7 @@ export interface IProduct extends Document {
   sku?: string;
   discountPercentage?: number;
   weight?: number;
+  weightUnit?: 'gm' | 'kg';
   dimensions?: IProductDimensions;
   isFeatured: boolean;
   isActive: boolean;
@@ -51,6 +54,15 @@ const productSchema = new Schema<IProduct>(
       type: String,
       trim: true,
       maxlength: [2000, 'Specifications must be at most 2000 characters'],
+    },
+    importedFrom: {
+      type: String,
+      trim: true,
+      maxlength: [2000, 'Imported from must be at most 2000 characters'],
+    },
+    warrantyMonths: {
+      type: Number,
+      min: [0, 'Warranty cannot be negative'],
     },
     price: {
       type: Number,
@@ -97,6 +109,11 @@ const productSchema = new Schema<IProduct>(
     weight: {
       type: Number,
       min: [0, 'Weight must be greater than or equal to 0'],
+    },
+    weightUnit: {
+      type: String,
+      enum: ['gm', 'kg'],
+      default: 'kg',
     },
     dimensions: {
       length: { type: Number, min: 0 },

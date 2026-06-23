@@ -42,6 +42,7 @@ export const createProductSchema = z
     name: z.string().min(2, 'Product name must be at least 2 characters').max(150),
     description: z.string().min(10, 'Description must be at least 10 characters').max(2000),
     specifications: z.string().max(2000, 'Specifications must be at most 2000 characters').optional(),
+    importedFrom: z.string().max(2000, 'Imported from must be at most 2000 characters').optional(),
     price: z.number().positive('Price must be greater than 0'),
     stock: z.number().int().nonnegative('Stock cannot be negative'),
     category: z.enum([
@@ -58,7 +59,9 @@ export const createProductSchema = z
       .min(0, 'Discount cannot be negative')
       .max(100, 'Discount cannot exceed 100')
       .optional(),
+    warrantyMonths: z.number().int().nonnegative('Warranty cannot be negative').optional(),
     weight: z.number().positive('Weight must be greater than 0').optional(),
+    weightUnit: z.enum(['gm', 'kg']).optional().default('kg'),
     dimensions: productDimensionsSchema.optional(),
     isFeatured: z.boolean().optional().default(false),
     isActive: z.boolean().optional().default(true),
@@ -73,6 +76,7 @@ export const updateProductSchema = z
     name: z.string().min(2, 'Product name must be at least 2 characters').max(150).optional(),
     description: z.string().min(10, 'Description must be at least 10 characters').max(2000).optional(),
     specifications: z.string().max(2000, 'Specifications must be at most 2000 characters').optional(),
+    importedFrom: z.string().max(2000, 'Imported from must be at most 2000 characters').optional(),
     price: z.number().positive('Price must be greater than 0').optional(),
     stock: z.number().int().nonnegative('Stock cannot be negative').optional(),
     category: z
@@ -91,7 +95,9 @@ export const updateProductSchema = z
       .min(0, 'Discount cannot be negative')
       .max(100, 'Discount cannot exceed 100')
       .optional(),
+    warrantyMonths: z.number().int().nonnegative('Warranty cannot be negative').optional(),
     weight: z.number().positive('Weight must be greater than 0').optional(),
+    weightUnit: z.enum(['gm', 'kg']).optional(),
     dimensions: productDimensionsSchema.optional(),
     isFeatured: z.boolean().optional(),
     isActive: z.boolean().optional(),
