@@ -186,4 +186,69 @@ const sendOrderConfirmationEmail = async (email: string, order: any, baseUrl?: s
   });
 };
 
-export { sendOrderConfirmationEmail };
+type OrderNotificationStatus = 'cancelled' | 'shipped' | 'delivered';
+
+const orderNotificationCopy: Record<OrderNotificationStatus, { subject: string; heading: string; body: string }> = {
+  cancelled: {
+    subject: 'Your FitFIXto order was cancelled',
+    heading: 'Order Cancelled',
+    body: 'Your order has been cancelled. If payment was collected, our team will follow up about the refund process.',
+  },
+  shipped: {
+    subject: 'Your FitFIXto order has shipped',
+    heading: 'Order Shipped',
+    body: 'Good news. Your order is on the way.',
+  },
+  delivered: {
+    subject: 'Your FitFIXto order was delivered',
+    heading: 'Order Delivered',
+    body: 'Your order has been marked as delivered. Thank you for shopping with FitFIXto.',
+  },
+};
+
+const sendOrderStatusEmail = async (
+  email: string,
+  order: any,
+  status: OrderNotificationStatus
+): Promise<void> => {
+  const copy = orderNotificationCopy[status];
+  const orderId = String(order._id);
+
+  const itemsHtml = (order.items || [])
+    .map((item: any) => `<li>${item.productName} - Qty: ${item.quantity} - Price: ${item.unitPrice}</li>`)
+    .join('');
+
+  const html = `
+    <html>
+      <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #007bff;">${copy.heading}</h2>
+          <p>${copy.body}</p>
+          <p><strong>Order:</strong> ${orderId}</p>
+          ${itemsHtml ? `<ul>${itemsHtml}</ul>` : ''}
+          <p><strong>Total:</strong> ${order.totalAmount}</p>
+          <p><strong>Status:</strong> ${status}</p>
+          <p style="color: #888; font-size: 12px;">If you have any questions, reply to this email.</p>
+        </div>
+      </body>
+    </html>
+  `;
+
+  await sendEmail({
+    to: email,
+    subject: `${copy.subject} - ${orderId}`,
+    html,
+    text: `${copy.heading}. Order ${orderId}. Total: ${order.totalAmount}. Status: ${status}.`,
+  });
+};
+
+const sendOrderCancelledEmail = (email: string, order: any): Promise<void> =>
+  sendOrderStatusEmail(email, order, 'cancelled');
+
+const sendOrderShippedEmail = (email: string, order: any): Promise<void> =>
+  sendOrderStatusEmail(email, order, 'shipped');
+
+const sendOrderDeliveredEmail = (email: string, order: any): Promise<void> =>
+  sendOrderStatusEmail(email, order, 'delivered');
+
+export { sendOrderConfirmationEmail, sendOrderCancelledEmail, sendOrderShippedEmail, sendOrderDeliveredEmail };

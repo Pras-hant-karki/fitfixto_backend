@@ -11,7 +11,12 @@ import Order from '../models/Order';
 import DeliveryAddress from '../models/DeliveryAddress';
 import Voucher from '../models/Voucher';
 import User from '../models/User';
-import { sendOrderConfirmationEmail } from '../services/emailService';
+import {
+  sendOrderCancelledEmail,
+  sendOrderConfirmationEmail,
+  sendOrderDeliveredEmail,
+  sendOrderShippedEmail,
+} from '../services/emailService';
 import { OrderStatus, PaymentStatus } from '../types/index';
 import { AdminOrderListQueryRequest, PlaceOrderRequest, UpdateOrderStatusRequest } from '../validations/order.validation';
 import {
@@ -380,6 +385,14 @@ const cancelOrder = asyncHandler(async (req: RequestWithUser, res: Response): Pr
     await Product.findByIdAndUpdate(item.productId, { $inc: { stock: item.quantity } });
   }
 
+  try {
+    if (req.user.email) {
+      await sendOrderCancelledEmail(req.user.email, order);
+    }
+  } catch (emailError) {
+    console.error('Failed to send order cancellation email', emailError);
+  }
+
   return sendSuccess(res, 'Order cancelled successfully', { order }, HTTP_STATUS.OK) as any;
 });
 
@@ -427,6 +440,24 @@ const updateOrderStatus = asyncHandler(async (req: RequestWithUser, res: Respons
   }
 
   await order.save();
+
+  if ([OrderStatus.CANCELLED, OrderStatus.SHIPPED, OrderStatus.DELIVERED].includes(status)) {
+    try {
+      const customer = await User.findById(order.userId).select('email');
+
+      if (customer?.email) {
+        if (status === OrderStatus.CANCELLED) {
+          await sendOrderCancelledEmail(customer.email, order);
+        } else if (status === OrderStatus.SHIPPED) {
+          await sendOrderShippedEmail(customer.email, order);
+        } else if (status === OrderStatus.DELIVERED) {
+          await sendOrderDeliveredEmail(customer.email, order);
+        }
+      }
+    } catch (emailError) {
+      console.error(`Failed to send order ${status} email`, emailError);
+    }
+  }
 
   const timeline = buildDeliveryTimeline(
     order.createdAt,
