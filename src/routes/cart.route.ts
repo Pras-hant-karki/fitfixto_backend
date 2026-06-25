@@ -9,6 +9,7 @@ const router = Router();
 router.use(authenticate);
 
 router.get('/', getCart);
+router.post('/', validateBody(addCartItemSchema), addToCart);
 router.post('/add', validateBody(addCartItemSchema), addToCart);
 router.patch('/update', validateBody(updateCartItemSchema), updateCartItem);
 router.delete('/remove', validateBody(removeCartItemSchema), removeFromCart);
