@@ -20,6 +20,9 @@ export interface IOrder extends Document {
   voucherCode?: string;
   subtotal: number;
   discountAmount: number;
+  shippingMethod?: string;
+  shippingAmount: number;
+  taxAmount: number;
   totalAmount: number;
   notes?: string;
   transactionId?: string;
@@ -106,6 +109,21 @@ const orderSchema = new Schema<IOrder>(
       min: 0,
     },
     discountAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    shippingMethod: {
+      type: String,
+      enum: ['standard', 'express', 'overnight'],
+      default: 'standard',
+    },
+    shippingAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    taxAmount: {
       type: Number,
       default: 0,
       min: 0,

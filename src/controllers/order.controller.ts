@@ -35,7 +35,11 @@ type CartProduct = {
 };
 
 const CART_TAX_RATE = 0.02;
-const DEFAULT_SHIPPING_AMOUNT = 0;
+const SHIPPING_AMOUNTS = {
+  standard: 0,
+  express: 29,
+  overnight: 79,
+} as const;
 const roundMoney = (value: number) => Math.round(value * 100) / 100;
 
 const getProductMrp = (product: CartProduct) => {
@@ -69,7 +73,8 @@ const placeOrder = asyncHandler(async (req: RequestWithUser, res: Response): Pro
     throw new AppError('Not authenticated', HTTP_STATUS.UNAUTHORIZED);
   }
 
-  const { deliveryAddressId, paymentMethod, notes, voucherCode } = req.body as PlaceOrderRequest;
+  const { deliveryAddressId, paymentMethod, notes, voucherCode, shippingMethod = 'standard' } = req.body as PlaceOrderRequest;
+  const shippingAmount = SHIPPING_AMOUNTS[shippingMethod];
 
   const address = await DeliveryAddress.findOne({ _id: deliveryAddressId, userId: req.user._id });
   if (!address) {
@@ -162,7 +167,7 @@ const placeOrder = asyncHandler(async (req: RequestWithUser, res: Response): Pro
   voucherDiscountAmount = Math.max(0, Math.min(voucherDiscountAmount, subtotal - productDiscountAmount));
   const discountAmount = roundMoney(productDiscountAmount + voucherDiscountAmount);
   const taxAmount = roundMoney(subtotal * CART_TAX_RATE);
-  const totalAmount = roundMoney(Math.max(0, subtotal - discountAmount) + DEFAULT_SHIPPING_AMOUNT + taxAmount);
+  const totalAmount = roundMoney(Math.max(0, subtotal - discountAmount) + shippingAmount + taxAmount);
 
   for (const item of cart.items) {
     const product = item.productId as unknown as CartProduct;
@@ -186,6 +191,9 @@ const placeOrder = asyncHandler(async (req: RequestWithUser, res: Response): Pro
     voucherCode: appliedVoucherCode,
     subtotal,
     discountAmount,
+    shippingMethod,
+    shippingAmount,
+    taxAmount,
     totalAmount,
     notes,
   });
