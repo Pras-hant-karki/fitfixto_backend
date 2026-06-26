@@ -29,6 +29,19 @@ const listTrainers = asyncHandler(async (_req: RequestWithUser, res: Response): 
   return sendSuccess(res, 'Trainers fetched successfully', { trainers }, HTTP_STATUS.OK) as any;
 });
 
+const listPublicTrainers = asyncHandler(async (_req: RequestWithUser, res: Response): Promise<void> => {
+  const trainers = await Trainer.find({ isSuspended: false })
+    .populate('userId', 'firstName lastName email phone bio profilePicture isActive')
+    .sort({ isFeatured: -1, createdAt: -1 });
+
+  const activeTrainers = trainers.filter((trainer) => {
+    const user = trainer.userId as unknown as { isActive?: boolean } | null;
+    return user?.isActive !== false;
+  });
+
+  return sendSuccess(res, 'Public trainers fetched successfully', { trainers: activeTrainers }, HTTP_STATUS.OK) as any;
+});
+
 const createTrainer = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
   const body = req.body as CreateTrainerRequest;
 
@@ -207,6 +220,7 @@ const uploadTrainerPhoto = asyncHandler(async (req: RequestWithUser, res: Respon
 
 export {
   listTrainers,
+  listPublicTrainers,
   createTrainer,
   updateTrainer,
   deleteTrainer,

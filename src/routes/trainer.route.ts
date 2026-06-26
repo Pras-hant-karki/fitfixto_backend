@@ -5,6 +5,7 @@ import {
   createTrainerApplication,
   deleteTrainer,
   listTrainerApplications,
+  listPublicTrainers,
   listTrainers,
   rejectTrainerApplication,
   updateTrainer,
@@ -25,6 +26,7 @@ import { UserRole } from '../types/index';
 const router = Router();
 
 router.post('/applications', validateBody(trainerApplicationSchema), createTrainerApplication);
+router.get('/public', listPublicTrainers);
 router.get('/applications', authenticate, authorize(UserRole.ADMIN), listTrainerApplications);
 router.patch('/applications/:applicationId/approve', authenticate, authorize(UserRole.ADMIN), validateParams(trainerApplicationIdParamSchema), approveTrainerApplication);
 router.patch('/applications/:applicationId/reject', authenticate, authorize(UserRole.ADMIN), validateParams(trainerApplicationIdParamSchema), rejectTrainerApplication);
