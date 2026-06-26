@@ -28,9 +28,24 @@ import {
 type CartProduct = {
   _id: string;
   price: number;
+  discountPercentage?: number;
   stock: number;
   name: string;
   category: string;
+};
+
+const CART_TAX_RATE = 0.02;
+const DEFAULT_SHIPPING_AMOUNT = 0;
+const roundMoney = (value: number) => Math.round(value * 100) / 100;
+
+const getProductMrp = (product: CartProduct) => {
+  const discount = product.discountPercentage ?? 0;
+
+  if (discount <= 0 || discount >= 100) {
+    return product.price;
+  }
+
+  return roundMoney(product.price / (1 - discount / 100));
 };
 
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -77,9 +92,20 @@ const placeOrder = asyncHandler(async (req: RequestWithUser, res: Response): Pro
     };
   });
 
-  const subtotal = Math.round(items.reduce((sum, item) => sum + item.lineTotal, 0) * 100) / 100;
+  const subtotal = roundMoney(
+    cart.items.reduce((sum, item) => {
+      const product = item.productId as unknown as CartProduct;
+      return sum + getProductMrp(product) * item.quantity;
+    }, 0)
+  );
+  const productDiscountAmount = roundMoney(
+    cart.items.reduce((sum, item) => {
+      const product = item.productId as unknown as CartProduct;
+      return sum + Math.max(0, getProductMrp(product) - product.price) * item.quantity;
+    }, 0)
+  );
 
-  let discountAmount = 0;
+  let voucherDiscountAmount = 0;
   let appliedVoucherCode: string | undefined;
 
   if (voucherCode) {
@@ -101,9 +127,9 @@ const placeOrder = asyncHandler(async (req: RequestWithUser, res: Response): Pro
     }
 
     if (voucher.type === 'percentage') {
-      discountAmount = Math.round(((voucher.amount ?? 0) * subtotal) / 100 * 100) / 100;
+      voucherDiscountAmount = Math.round(((voucher.amount ?? 0) * (subtotal - productDiscountAmount)) / 100 * 100) / 100;
     } else if (voucher.type === 'fixed') {
-      discountAmount = Math.min(voucher.amount ?? 0, subtotal);
+      voucherDiscountAmount = Math.min(voucher.amount ?? 0, subtotal - productDiscountAmount);
     } else if (voucher.type === 'bundle') {
       const bundle = voucher.bundle;
       const bundleIds = bundle?.productIds?.map((id) => id.toString()) ?? [];
@@ -122,9 +148,9 @@ const placeOrder = asyncHandler(async (req: RequestWithUser, res: Response): Pro
       }
 
       if (bundle.discountPercentage !== undefined) {
-        discountAmount = Math.round((bundleSubtotal * bundle.discountPercentage) / 100 * 100) / 100;
+        voucherDiscountAmount = Math.round((bundleSubtotal * bundle.discountPercentage) / 100 * 100) / 100;
       } else if (bundle.discountAmount !== undefined) {
-        discountAmount = Math.min(bundle.discountAmount, bundleSubtotal);
+        voucherDiscountAmount = Math.min(bundle.discountAmount, bundleSubtotal);
       }
     }
 
@@ -133,8 +159,10 @@ const placeOrder = asyncHandler(async (req: RequestWithUser, res: Response): Pro
     await voucher.save();
   }
 
-  discountAmount = Math.max(0, Math.min(discountAmount, subtotal));
-  const totalAmount = Math.round((subtotal - discountAmount) * 100) / 100;
+  voucherDiscountAmount = Math.max(0, Math.min(voucherDiscountAmount, subtotal - productDiscountAmount));
+  const discountAmount = roundMoney(productDiscountAmount + voucherDiscountAmount);
+  const taxAmount = roundMoney(subtotal * CART_TAX_RATE);
+  const totalAmount = roundMoney(Math.max(0, subtotal - discountAmount) + DEFAULT_SHIPPING_AMOUNT + taxAmount);
 
   for (const item of cart.items) {
     const product = item.productId as unknown as CartProduct;
