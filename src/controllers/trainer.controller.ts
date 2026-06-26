@@ -42,6 +42,23 @@ const listPublicTrainers = asyncHandler(async (_req: RequestWithUser, res: Respo
   return sendSuccess(res, 'Public trainers fetched successfully', { trainers: activeTrainers }, HTTP_STATUS.OK) as any;
 });
 
+const getPublicTrainer = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const { trainerId } = req.params;
+  const trainer = await Trainer.findOne({ _id: trainerId, isSuspended: false })
+    .populate('userId', 'firstName lastName email phone bio profilePicture isActive');
+
+  if (!trainer) {
+    throw new AppError('Trainer not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  const user = trainer.userId as unknown as { isActive?: boolean } | null;
+  if (user?.isActive === false) {
+    throw new AppError('Trainer not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  return sendSuccess(res, 'Trainer fetched successfully', { trainer }, HTTP_STATUS.OK) as any;
+});
+
 const createTrainer = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
   const body = req.body as CreateTrainerRequest;
 
@@ -221,6 +238,7 @@ const uploadTrainerPhoto = asyncHandler(async (req: RequestWithUser, res: Respon
 export {
   listTrainers,
   listPublicTrainers,
+  getPublicTrainer,
   createTrainer,
   updateTrainer,
   deleteTrainer,

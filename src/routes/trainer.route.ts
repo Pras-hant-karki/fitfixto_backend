@@ -4,6 +4,7 @@ import {
   createTrainer,
   createTrainerApplication,
   deleteTrainer,
+  getPublicTrainer,
   listTrainerApplications,
   listPublicTrainers,
   listTrainers,
@@ -27,6 +28,7 @@ const router = Router();
 
 router.post('/applications', validateBody(trainerApplicationSchema), createTrainerApplication);
 router.get('/public', listPublicTrainers);
+router.get('/public/:trainerId', validateParams(trainerIdParamSchema), getPublicTrainer);
 router.get('/applications', authenticate, authorize(UserRole.ADMIN), listTrainerApplications);
 router.patch('/applications/:applicationId/approve', authenticate, authorize(UserRole.ADMIN), validateParams(trainerApplicationIdParamSchema), approveTrainerApplication);
 router.patch('/applications/:applicationId/reject', authenticate, authorize(UserRole.ADMIN), validateParams(trainerApplicationIdParamSchema), rejectTrainerApplication);
