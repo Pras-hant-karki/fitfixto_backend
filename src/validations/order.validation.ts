@@ -12,6 +12,7 @@ export const placeOrderSchema = z
     notes: z.string().max(1000, 'Notes must be at most 1000 characters').optional(),
     voucherCode: z.string().min(1, 'Voucher code cannot be empty').optional(),
     shippingMethod: z.enum(['standard', 'express', 'overnight']).optional().default('standard'),
+    selectedProductIds: z.array(z.string().min(1, 'Product ID cannot be empty')).min(1).optional(),
   })
   .strict();
 

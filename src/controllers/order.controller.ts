@@ -73,8 +73,9 @@ const placeOrder = asyncHandler(async (req: RequestWithUser, res: Response): Pro
     throw new AppError('Not authenticated', HTTP_STATUS.UNAUTHORIZED);
   }
 
-  const { deliveryAddressId, paymentMethod, notes, voucherCode, shippingMethod = 'standard' } = req.body as PlaceOrderRequest;
+  const { deliveryAddressId, paymentMethod, notes, voucherCode, shippingMethod = 'standard', selectedProductIds } = req.body as PlaceOrderRequest;
   const shippingAmount = SHIPPING_AMOUNTS[shippingMethod];
+  const selectedProductIdSet = new Set(selectedProductIds ?? []);
 
   const address = await DeliveryAddress.findOne({ _id: deliveryAddressId, userId: req.user._id });
   if (!address) {
@@ -86,7 +87,15 @@ const placeOrder = asyncHandler(async (req: RequestWithUser, res: Response): Pro
     throw new AppError('Cart is empty', HTTP_STATUS.BAD_REQUEST);
   }
 
-  const items = cart.items.map((item) => {
+  const selectedCartItems = selectedProductIdSet.size
+    ? cart.items.filter((item) => selectedProductIdSet.has(item.productId._id.toString()))
+    : cart.items;
+
+  if (selectedCartItems.length === 0) {
+    throw new AppError('Selected cart items were not found', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  const items = selectedCartItems.map((item) => {
     const product = item.productId as unknown as CartProduct;
     return {
       productId: product._id,
@@ -98,13 +107,13 @@ const placeOrder = asyncHandler(async (req: RequestWithUser, res: Response): Pro
   });
 
   const subtotal = roundMoney(
-    cart.items.reduce((sum, item) => {
+    selectedCartItems.reduce((sum, item) => {
       const product = item.productId as unknown as CartProduct;
       return sum + getProductMrp(product) * item.quantity;
     }, 0)
   );
   const productDiscountAmount = roundMoney(
-    cart.items.reduce((sum, item) => {
+    selectedCartItems.reduce((sum, item) => {
       const product = item.productId as unknown as CartProduct;
       return sum + Math.max(0, getProductMrp(product) - product.price) * item.quantity;
     }, 0)
@@ -169,14 +178,14 @@ const placeOrder = asyncHandler(async (req: RequestWithUser, res: Response): Pro
   const taxAmount = roundMoney(subtotal * CART_TAX_RATE);
   const totalAmount = roundMoney(Math.max(0, subtotal - discountAmount) + shippingAmount + taxAmount);
 
-  for (const item of cart.items) {
+  for (const item of selectedCartItems) {
     const product = item.productId as unknown as CartProduct;
     if (product.stock < item.quantity) {
       throw new AppError(`Insufficient stock for ${product.name}`, HTTP_STATUS.BAD_REQUEST);
     }
   }
 
-  for (const item of cart.items) {
+  for (const item of selectedCartItems) {
     const product = item.productId as unknown as CartProduct;
     await Product.findByIdAndUpdate(product._id, { $inc: { stock: -item.quantity } });
   }
@@ -198,7 +207,8 @@ const placeOrder = asyncHandler(async (req: RequestWithUser, res: Response): Pro
     notes,
   });
 
-  cart.items = [];
+  const orderedProductIds = new Set(items.map((item) => item.productId.toString()));
+  cart.items = cart.items.filter((item) => !orderedProductIds.has(item.productId._id.toString()));
   await cart.save();
 
   // send confirmation email (do not fail the request if email sending fails)
