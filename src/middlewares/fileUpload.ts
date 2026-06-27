@@ -52,5 +52,6 @@ const imageUpload: Multer = multer({
 
 const uploadProfileImage = imageUpload;
 const uploadProductImages = imageUpload;
+const uploadPartnerGymImages = imageUpload;
 
-export { uploadProfileImage, uploadProductImages };
+export { uploadProfileImage, uploadProductImages, uploadPartnerGymImages };

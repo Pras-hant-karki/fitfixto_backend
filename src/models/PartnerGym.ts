@@ -9,7 +9,7 @@ export interface IPartnerGym extends Document {
   rating?: number;
   pin?: string;
   locationUrl?: string;
-  imageUrl?: string;
+  images: string[];
   isVisible: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -56,10 +56,13 @@ const partnerGymSchema = new Schema<IPartnerGym>(
       trim: true,
       maxlength: [1000, 'Location URL must be at most 1000 characters'],
     },
-    imageUrl: {
-      type: String,
-      trim: true,
-      maxlength: [1000, 'Image URL must be at most 1000 characters'],
+    images: {
+      type: [String],
+      default: [],
+      validate: {
+        validator: (images: string[]) => images.length <= 5,
+        message: 'Partner gym can have at most 5 images',
+      },
     },
     isVisible: {
       type: Boolean,

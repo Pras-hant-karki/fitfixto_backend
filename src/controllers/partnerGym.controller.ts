@@ -63,3 +63,17 @@ export const deletePartnerGym = asyncHandler(async (req: RequestWithUser, res: R
 
   return sendSuccess(res, 'Partner gym deleted successfully', { gymId: req.params.gymId }, HTTP_STATUS.OK) as any;
 });
+
+export const uploadPartnerGymImages = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
+    throw new AppError('No partner gym images uploaded', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  const images = req.files.map((file) => ({
+    filename: file.filename,
+    path: `/uploads/${file.filename}`,
+    mimetype: file.mimetype,
+  }));
+
+  return sendSuccess(res, 'Partner gym images uploaded successfully', { images }, HTTP_STATUS.OK) as any;
+});

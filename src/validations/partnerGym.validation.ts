@@ -1,12 +1,5 @@
 import { z } from 'zod';
 
-const optionalUrlSchema = z
-  .string()
-  .trim()
-  .max(1000)
-  .optional()
-  .or(z.literal(''));
-
 const gymPayloadSchema = z
   .object({
     name: z.string().trim().min(2, 'Gym name must be at least 2 characters').max(150),
@@ -15,8 +8,8 @@ const gymPayloadSchema = z
     hours: z.string().trim().max(80).optional().or(z.literal('')),
     rating: z.number().min(0).max(5).optional(),
     pin: z.string().trim().max(80).optional().or(z.literal('')),
-    locationUrl: optionalUrlSchema,
-    imageUrl: optionalUrlSchema,
+    locationUrl: z.string().trim().max(1000).optional().or(z.literal('')),
+    images: z.array(z.string().trim().min(1).max(1000)).max(5).optional().default([]),
     isVisible: z.boolean().optional().default(true),
   })
   .strict();
