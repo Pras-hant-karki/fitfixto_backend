@@ -1,6 +1,4 @@
 import { z } from 'zod';
-import { ProductCategory } from '../types/index';
-
 const imageUrlSchema = z.string().refine(
   (value) => {
     if (!value.trim()) {
@@ -29,13 +27,7 @@ const productDimensionsSchema = z
 const productCategoryListSchema = z
   .string()
   .min(1)
-  .transform((value) => value.split(',').map((category) => category.trim()).filter(Boolean))
-  .refine(
-    (categories) =>
-      categories.length > 0 &&
-      categories.every((category) => Object.values(ProductCategory).includes(category as ProductCategory)),
-    { message: 'Invalid product category' }
-  );
+  .transform((value) => value.split(',').map((category) => category.trim()).filter(Boolean));
 
 export const createProductSchema = z
   .object({
@@ -45,11 +37,8 @@ export const createProductSchema = z
     importedFrom: z.string().max(2000, 'Imported from must be at most 2000 characters').optional(),
     price: z.number().positive('Price must be greater than 0'),
     stock: z.number().int().nonnegative('Stock cannot be negative'),
-    category: z.enum([
-      ProductCategory.GYM_EQUIPMENT,
-      ProductCategory.SUPPLEMENTS,
-      ProductCategory.ACCESSORIES,
-    ]),
+    category: z.string().min(2, 'Category must be at least 2 characters').max(100),
+    subcategory: z.string().min(2, 'Subcategory must be at least 2 characters').max(100).optional(),
     brand: z.string().min(2, 'Brand must be at least 2 characters').max(100).optional(),
     images: z.array(imageUrlSchema).optional().default([]),
     tags: z.array(z.string().min(1)).optional(),
@@ -79,13 +68,8 @@ export const updateProductSchema = z
     importedFrom: z.string().max(2000, 'Imported from must be at most 2000 characters').optional(),
     price: z.number().positive('Price must be greater than 0').optional(),
     stock: z.number().int().nonnegative('Stock cannot be negative').optional(),
-    category: z
-      .enum([
-        ProductCategory.GYM_EQUIPMENT,
-        ProductCategory.SUPPLEMENTS,
-        ProductCategory.ACCESSORIES,
-      ])
-      .optional(),
+    category: z.string().min(2, 'Category must be at least 2 characters').max(100).optional(),
+    subcategory: z.string().min(2, 'Subcategory must be at least 2 characters').max(100).optional(),
     brand: z.string().min(2, 'Brand must be at least 2 characters').max(100).optional(),
     images: z.array(imageUrlSchema).optional(),
     tags: z.array(z.string().min(1)).optional(),
@@ -119,6 +103,7 @@ export const productListQuerySchema = z
   .object({
     search: z.string().optional(),
     category: productCategoryListSchema.optional(),
+    subcategory: z.string().min(1).optional(),
     brand: z.string().min(1).optional(),
     minPrice: z.coerce.number().nonnegative().optional(),
     maxPrice: z.coerce.number().nonnegative().optional(),
