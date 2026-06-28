@@ -6,10 +6,11 @@ import { AppError } from '../utils/appError';
 import { RequestWithUser } from '../middlewares/auth';
 import Trainer from '../models/Trainer';
 import TrainerApplication from '../models/TrainerApplication';
+import TrainerProgram from '../models/TrainerProgram';
 import User from '../models/User';
 import { UserRole } from '../types/index';
 import { sendTrainerCredentialsEmail } from '../services/emailService';
-import { CreateTrainerRequest, TrainerApplicationRequest, UpdateTrainerRequest } from '../validations/trainer.validation';
+import { CreateTrainerRequest, TrainerApplicationRequest, TrainerProgramRequest, UpdateTrainerProgramRequest, UpdateTrainerRequest } from '../validations/trainer.validation';
 
 const buildTrainerPayload = (body: CreateTrainerRequest | UpdateTrainerRequest) => ({
   location: body.location,
@@ -57,6 +58,24 @@ const getPublicTrainer = asyncHandler(async (req: RequestWithUser, res: Response
   }
 
   return sendSuccess(res, 'Trainer fetched successfully', { trainer }, HTTP_STATUS.OK) as any;
+});
+
+const listPublicTrainerPrograms = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const { trainerId } = req.params;
+
+  const trainer = await Trainer.findOne({ _id: trainerId, isSuspended: false }).populate('userId', 'isActive');
+  if (!trainer) {
+    throw new AppError('Trainer not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  const user = trainer.userId as unknown as { isActive?: boolean } | null;
+  if (user?.isActive === false) {
+    throw new AppError('Trainer not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  const programs = await TrainerProgram.find({ trainerId, isActive: true }).sort({ createdAt: -1 });
+
+  return sendSuccess(res, 'Trainer programs fetched successfully', { programs }, HTTP_STATUS.OK) as any;
 });
 
 const createTrainer = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
@@ -235,10 +254,68 @@ const uploadTrainerPhoto = asyncHandler(async (req: RequestWithUser, res: Respon
   return sendSuccess(res, 'Trainer photo uploaded successfully', { photo }, HTTP_STATUS.OK) as any;
 });
 
+const getCurrentTrainer = async (req: RequestWithUser) => {
+  const trainer = await Trainer.findOne({ userId: req.user?._id });
+
+  if (!trainer) {
+    throw new AppError('Trainer profile not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  return trainer;
+};
+
+const listMyTrainerPrograms = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const trainer = await getCurrentTrainer(req);
+  const programs = await TrainerProgram.find({ trainerId: trainer._id }).sort({ createdAt: -1 });
+
+  return sendSuccess(res, 'Trainer programs fetched successfully', { programs }, HTTP_STATUS.OK) as any;
+});
+
+const createTrainerProgram = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const trainer = await getCurrentTrainer(req);
+  const body = req.body as TrainerProgramRequest;
+  const program = await TrainerProgram.create({
+    trainerId: trainer._id,
+    ...body,
+  });
+
+  return sendSuccess(res, 'Trainer program created successfully', { program }, HTTP_STATUS.CREATED) as any;
+});
+
+const updateTrainerProgram = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const trainer = await getCurrentTrainer(req);
+  const body = req.body as UpdateTrainerProgramRequest;
+  const { programId } = req.params;
+
+  const program = await TrainerProgram.findOneAndUpdate({ _id: programId, trainerId: trainer._id }, body, {
+    new: true,
+    runValidators: true,
+  });
+
+  if (!program) {
+    throw new AppError('Trainer program not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  return sendSuccess(res, 'Trainer program updated successfully', { program }, HTTP_STATUS.OK) as any;
+});
+
+const deleteTrainerProgram = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const trainer = await getCurrentTrainer(req);
+  const { programId } = req.params;
+  const program = await TrainerProgram.findOneAndDelete({ _id: programId, trainerId: trainer._id });
+
+  if (!program) {
+    throw new AppError('Trainer program not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  return sendSuccess(res, 'Trainer program deleted successfully', { programId }, HTTP_STATUS.OK) as any;
+});
+
 export {
   listTrainers,
   listPublicTrainers,
   getPublicTrainer,
+  listPublicTrainerPrograms,
   createTrainer,
   updateTrainer,
   deleteTrainer,
@@ -247,4 +324,8 @@ export {
   listTrainerApplications,
   approveTrainerApplication,
   rejectTrainerApplication,
+  listMyTrainerPrograms,
+  createTrainerProgram,
+  updateTrainerProgram,
+  deleteTrainerProgram,
 };
