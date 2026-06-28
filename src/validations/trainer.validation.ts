@@ -113,3 +113,25 @@ export const trainerProgramIdParamSchema = z
   .strict();
 
 export type TrainerProgramIdParamRequest = z.infer<typeof trainerProgramIdParamSchema>;
+
+export const trainerAvailabilitySchema = z
+  .object({
+    dayOfWeek: z.enum(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']),
+    timeLabel: z.string().min(2, 'Time is required').max(30),
+    isActive: z.boolean().optional().default(true),
+  })
+  .strict();
+
+export type TrainerAvailabilityRequest = z.infer<typeof trainerAvailabilitySchema>;
+
+export const updateTrainerAvailabilitySchema = trainerAvailabilitySchema.partial().strict();
+
+export type UpdateTrainerAvailabilityRequest = z.infer<typeof updateTrainerAvailabilitySchema>;
+
+export const trainerAvailabilityIdParamSchema = z
+  .object({
+    slotId: z.string().min(1, 'Availability slot ID is required'),
+  })
+  .strict();
+
+export type TrainerAvailabilityIdParamRequest = z.infer<typeof trainerAvailabilityIdParamSchema>;
