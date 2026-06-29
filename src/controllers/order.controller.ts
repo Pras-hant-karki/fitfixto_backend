@@ -249,6 +249,7 @@ const getMyOrders = asyncHandler(async (req: RequestWithUser, res: Response): Pr
   }
 
   const orders = await Order.find({ userId: req.user._id })
+    .populate('items.productId', 'name price category brand images stock verifiedBadge')
     .populate('deliveryAddressId')
     .sort({ createdAt: -1 });
 
