@@ -9,14 +9,25 @@ import Order from '../models/Order';
 import Product from '../models/Product';
 import Review from '../models/Review';
 import { OrderStatus, UserRole } from '../types/index';
-import { CreateReviewRequest, ReviewListQueryRequest, UpdateReviewRequest } from '../validations/review.validation';
+import {
+  AdminReviewListQueryRequest,
+  CreateReviewRequest,
+  ReviewListQueryRequest,
+  ReviewModerationRequest,
+  UpdateReviewRequest,
+} from '../validations/review.validation';
+
+const approvedReviewMatch = {
+  isActive: true,
+  $or: [{ moderationStatus: 'approved' }, { moderationStatus: { $exists: false } }],
+};
 
 const recalculateProductRating = async (productId: Types.ObjectId | string) => {
   const [stats] = await Review.aggregate([
     {
       $match: {
         productId: new Types.ObjectId(productId.toString()),
-        isActive: true,
+        ...approvedReviewMatch,
       },
     },
     {
@@ -40,7 +51,7 @@ const sendReviewList = async (
   forcedUserId?: string
 ) => {
   const { productId, userId, page = 1, limit = 20, sortBy = 'createdAt', order = 'desc' } = query;
-  const filter: Record<string, unknown> = { isActive: true };
+  const filter: Record<string, unknown> = { ...approvedReviewMatch };
 
   if (productId) {
     filter.productId = productId;
@@ -116,11 +127,12 @@ const createReview = asyncHandler(async (req: RequestWithUser, res: Response): P
   const review = await Review.create({
     userId: req.user._id,
     productId,
-    orderId,
-    rating,
-    title,
-    comment,
-  });
+      orderId,
+      rating,
+      title,
+      comment,
+      moderationStatus: 'approved',
+    });
 
   await recalculateProductRating(productId);
 
@@ -140,7 +152,7 @@ const updateReview = asyncHandler(async (req: RequestWithUser, res: Response): P
   const updates = req.body as UpdateReviewRequest;
   const review = await Review.findById(reviewId);
 
-  if (!review || !review.isActive) {
+  if (!review || !review.isActive || review.moderationStatus === 'removed') {
     throw new AppError('Review not found', HTTP_STATUS.NOT_FOUND);
   }
 
@@ -184,6 +196,7 @@ const deleteReview = asyncHandler(async (req: RequestWithUser, res: Response): P
   }
 
   review.isActive = false;
+  review.moderationStatus = 'removed';
   await review.save();
   await recalculateProductRating(review.productId);
 
@@ -202,4 +215,118 @@ const listMyReviews = asyncHandler(async (req: RequestWithUser, res: Response): 
   return sendReviewList(res, req.query as unknown as ReviewListQueryRequest, req.user._id.toString());
 });
 
-export { createReview, updateReview, deleteReview, listReviews, listMyReviews };
+const listAdminReviews = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const {
+    productId,
+    userId,
+    status = 'all',
+    search,
+    page = 1,
+    limit = 20,
+    sortBy = 'createdAt',
+    order = 'desc',
+  } = req.query as unknown as AdminReviewListQueryRequest;
+
+  const filter: Record<string, unknown> = {};
+
+  if (productId) {
+    filter.productId = productId;
+  }
+
+  if (userId) {
+    filter.userId = userId;
+  }
+
+  if (status === 'approved') {
+    filter.isActive = true;
+    filter.$or = [{ moderationStatus: 'approved' }, { moderationStatus: { $exists: false } }];
+  }
+
+  if (status === 'removed') {
+    filter.$or = [{ isActive: false }, { moderationStatus: 'removed' }];
+  }
+
+  const skip = (page - 1) * limit;
+  const sortDirection = order === 'asc' ? 1 : -1;
+
+  const [reviews, total] = await Promise.all([
+    Review.find(filter)
+      .populate('productId', 'name category brand images price averageRating ratingCount')
+      .populate('userId', 'firstName lastName email')
+      .populate('orderId', 'orderNumber status totalAmount createdAt')
+      .sort({ [sortBy]: sortDirection })
+      .skip(skip)
+      .limit(limit),
+    Review.countDocuments(filter),
+  ]);
+
+  const normalizedSearch = search?.trim().toLowerCase();
+  const filteredReviews = normalizedSearch
+    ? reviews.filter((review) => {
+        const product = review.productId as unknown as { name?: string; brand?: string; category?: string };
+        const user = review.userId as unknown as { firstName?: string; lastName?: string; email?: string };
+        const haystack = [
+          product?.name,
+          product?.brand,
+          product?.category,
+          user?.firstName,
+          user?.lastName,
+          user?.email,
+          review.title,
+          review.comment,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+
+        return haystack.includes(normalizedSearch);
+      })
+    : reviews;
+
+  return sendSuccess(
+    res,
+    'Admin reviews fetched successfully',
+    {
+      reviews: filteredReviews,
+      pagination: {
+        total: normalizedSearch ? filteredReviews.length : total,
+        page,
+        limit,
+        totalPages: Math.ceil((normalizedSearch ? filteredReviews.length : total) / limit),
+        hasNextPage: normalizedSearch ? false : page * limit < total,
+        hasPrevPage: page > 1,
+      },
+    },
+    HTTP_STATUS.OK
+  ) as any;
+});
+
+const moderateReview = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const { reviewId } = req.params;
+  const { status } = req.body as ReviewModerationRequest;
+
+  const review = await Review.findById(reviewId);
+
+  if (!review) {
+    throw new AppError('Review not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  review.moderationStatus = status;
+  review.isActive = status === 'approved';
+  await review.save();
+  await recalculateProductRating(review.productId);
+
+  const populatedReview = await Review.findById(review._id)
+    .populate('productId', 'name category brand images price averageRating ratingCount')
+    .populate('userId', 'firstName lastName email')
+    .populate('orderId', 'orderNumber status totalAmount createdAt');
+
+  return sendSuccess(
+    res,
+    status === 'approved' ? 'Review approved successfully' : 'Review removed successfully',
+    { review: populatedReview },
+    HTTP_STATUS.OK
+  ) as any;
+});
+
+export { createReview, updateReview, deleteReview, listReviews, listMyReviews, listAdminReviews, moderateReview };

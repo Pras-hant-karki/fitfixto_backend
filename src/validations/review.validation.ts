@@ -48,3 +48,18 @@ export const reviewListQuerySchema = z
   .strict();
 
 export type ReviewListQueryRequest = z.infer<typeof reviewListQuerySchema>;
+
+export const adminReviewListQuerySchema = reviewListQuerySchema.extend({
+  status: z.enum(['all', 'approved', 'removed']).optional().default('all'),
+  search: z.string().trim().optional(),
+});
+
+export type AdminReviewListQueryRequest = z.infer<typeof adminReviewListQuerySchema>;
+
+export const reviewModerationSchema = z
+  .object({
+    status: z.enum(['approved', 'removed']),
+  })
+  .strict();
+
+export type ReviewModerationRequest = z.infer<typeof reviewModerationSchema>;
