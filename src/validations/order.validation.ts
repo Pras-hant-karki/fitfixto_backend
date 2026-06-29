@@ -29,12 +29,9 @@ export type CancelOrderRequest = z.infer<typeof cancelOrderSchema>;
 export const updateOrderStatusSchema = z
   .object({
     status: z.enum([
-      OrderStatus.PENDING,
       OrderStatus.CONFIRMED,
       OrderStatus.SHIPPED,
       OrderStatus.DELIVERED,
-      OrderStatus.CANCELLED,
-      OrderStatus.RETURNED,
     ]),
   })
   .strict();
