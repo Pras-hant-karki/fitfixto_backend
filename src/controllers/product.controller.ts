@@ -139,8 +139,6 @@ const listProducts = asyncHandler(async (req: RequestWithUser, res: Response): P
 
   if (typeof isActive === 'boolean' && isAdmin) {
     filter.isActive = isActive;
-  } else if (!isAdmin) {
-    filter.isActive = true;
   }
 
   const skip = (page - 1) * limit;
