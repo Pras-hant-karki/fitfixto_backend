@@ -6,6 +6,7 @@ export const apiRateLimiter = rateLimit({
   max: RATE_LIMIT_CONFIG.MAX_REQUESTS,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => process.env.NODE_ENV !== 'production' && req.method === 'GET',
   message: {
     success: false,
     message: 'Too many requests from this IP, please try again later.',
@@ -14,7 +15,7 @@ export const apiRateLimiter = rateLimit({
 
 export const adminLoginRateLimiter = rateLimit({
   windowMs: RATE_LIMIT_CONFIG.WINDOW_MS,
-  max: 5,
+  max: RATE_LIMIT_CONFIG.ADMIN_LOGIN_MAX_REQUESTS,
   standardHeaders: true,
   legacyHeaders: false,
   message: {

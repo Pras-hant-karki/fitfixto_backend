@@ -20,5 +20,6 @@ export const HTTP_STATUS = {
 
 export const RATE_LIMIT_CONFIG = {
   WINDOW_MS: 15 * 60 * 1000,
-  MAX_REQUESTS: 100,
+  MAX_REQUESTS: process.env.NODE_ENV === 'production' ? 300 : 2000,
+  ADMIN_LOGIN_MAX_REQUESTS: 5,
 } as const;

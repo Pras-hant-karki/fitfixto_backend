@@ -13,6 +13,7 @@ export interface ITrainerApplication extends Document {
   experienceYears: number;
   specialties: string[];
   certifications: string[];
+  certificationFiles: string[];
   bio?: string;
   profilePicture?: string | null;
   status: TrainerApplicationStatus;
@@ -70,6 +71,10 @@ const trainerApplicationSchema = new Schema<ITrainerApplication>(
       default: [],
     },
     certifications: {
+      type: [String],
+      default: [],
+    },
+    certificationFiles: {
       type: [String],
       default: [],
     },

@@ -21,9 +21,10 @@ import {
   updateTrainerAvailability,
   updateTrainerProgram,
   uploadTrainerPhoto,
+  uploadTrainerApplicationFiles,
 } from '../controllers/trainer.controller';
 import { authenticate, authorize } from '../middlewares/auth';
-import { uploadProfileImage } from '../middlewares/fileUpload';
+import { uploadProfileImage, uploadTrainerApplicationFiles as trainerApplicationUpload } from '../middlewares/fileUpload';
 import { validateBody, validateParams } from '../middlewares/validation';
 import {
   createTrainerSchema,
@@ -43,6 +44,14 @@ import { UserRole } from '../types/index';
 const router = Router();
 
 router.post('/applications', validateBody(trainerApplicationSchema), createTrainerApplication);
+router.post(
+  '/applications/upload-files',
+  trainerApplicationUpload.fields([
+    { name: 'photo', maxCount: 1 },
+    { name: 'certificates', maxCount: 5 },
+  ]),
+  uploadTrainerApplicationFiles
+);
 router.get('/public', listPublicTrainers);
 router.get('/public/:trainerId/programs', validateParams(trainerIdParamSchema), listPublicTrainerPrograms);
 router.get('/public/:trainerId/availability', validateParams(trainerIdParamSchema), listPublicTrainerAvailability);

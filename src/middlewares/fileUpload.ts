@@ -54,4 +54,23 @@ const uploadProfileImage = imageUpload;
 const uploadProductImages = imageUpload;
 const uploadPartnerGymImages = imageUpload;
 
-export { uploadProfileImage, uploadProductImages, uploadPartnerGymImages };
+const applicationFileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+  const allowedMimes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+
+  if (allowedMimes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new AppError('Only JPEG, PNG, WebP, and PDF files are allowed', HTTP_STATUS.BAD_REQUEST));
+  }
+};
+
+const uploadTrainerApplicationFiles = multer({
+  storage,
+  fileFilter: applicationFileFilter,
+  limits: {
+    fileSize: env.MAX_FILE_SIZE,
+    files: 6,
+  },
+});
+
+export { uploadProfileImage, uploadProductImages, uploadPartnerGymImages, uploadTrainerApplicationFiles };

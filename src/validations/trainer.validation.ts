@@ -76,6 +76,7 @@ export const trainerApplicationSchema = z
     experienceYears: z.coerce.number().int().nonnegative('Experience must be non-negative').default(0),
     specialties: listSchema,
     certifications: listSchema,
+    certificationFiles: listSchema,
   })
   .strict();
 

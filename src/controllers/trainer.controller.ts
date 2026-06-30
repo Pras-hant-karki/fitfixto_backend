@@ -281,6 +281,26 @@ const uploadTrainerPhoto = asyncHandler(async (req: RequestWithUser, res: Respon
   return sendSuccess(res, 'Trainer photo uploaded successfully', { photo }, HTTP_STATUS.OK) as any;
 });
 
+const uploadTrainerApplicationFiles = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const files = (req.files || {}) as Record<string, Express.Multer.File[]>;
+  const photo = files.photo?.[0];
+  const certificates = files.certificates || [];
+
+  if (!photo && certificates.length === 0) {
+    throw new AppError('No application files uploaded', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  return sendSuccess(
+    res,
+    'Trainer application files uploaded successfully',
+    {
+      photo: photo ? `/uploads/${photo.filename}` : null,
+      certificates: certificates.map((file) => `/uploads/${file.filename}`),
+    },
+    HTTP_STATUS.OK
+  ) as any;
+});
+
 const getCurrentTrainer = async (req: RequestWithUser) => {
   const trainer = await Trainer.findOne({ userId: req.user?._id });
 
@@ -395,6 +415,7 @@ export {
   updateTrainer,
   deleteTrainer,
   uploadTrainerPhoto,
+  uploadTrainerApplicationFiles,
   createTrainerApplication,
   listTrainerApplications,
   approveTrainerApplication,
