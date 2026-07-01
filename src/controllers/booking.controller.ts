@@ -133,23 +133,54 @@ const cancelMyBooking = asyncHandler(async (req: RequestWithUser, res: Response)
 const getMyClients = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
   const trainer = await getTrainerByUserId(req.user?._id);
 
-  const bookings = await Booking.find({ trainerId: trainer._id })
+  const bookings = await Booking.find({ trainerId: trainer._id, status: { $ne: 'cancelled' } })
     .populate('clientId', 'firstName lastName email phone profilePicture createdAt isActive')
+    .sort({ slotDate: -1, createdAt: -1 })
     .lean();
 
-  const clientMap = new Map<string, { user: Record<string, unknown>; bookingCount: number; lastBooking: Date }>();
+  const clientMap = new Map<
+    string,
+    {
+      user: Record<string, unknown>;
+      bookingCount: number;
+      lastBooking: Date;
+      lastProgram: string;
+      upcomingSessions: number;
+    }
+  >();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const sessionLabels = {
+    single: 'Single Session',
+    five_pack: '5-Session Pack',
+    ten_pack: '10-Session Pack',
+  } as const;
 
   for (const booking of bookings) {
     const client = booking.clientId as unknown as Record<string, unknown>;
     if (!client || !client._id) continue;
     const clientId = String(client._id);
     const existing = clientMap.get(clientId);
+    const sessionCount = booking.sessionCount || 1;
+    const upcomingSessions =
+      booking.slotDate >= today && ['pending', 'confirmed'].includes(booking.status) ? sessionCount : 0;
+    const lastProgram = sessionLabels[booking.sessionType || 'single'];
 
     if (existing) {
-      existing.bookingCount += 1;
-      if (booking.slotDate > existing.lastBooking) existing.lastBooking = booking.slotDate;
+      existing.bookingCount += sessionCount;
+      existing.upcomingSessions += upcomingSessions;
+      if (booking.slotDate > existing.lastBooking) {
+        existing.lastBooking = booking.slotDate;
+        existing.lastProgram = lastProgram;
+      }
     } else {
-      clientMap.set(clientId, { user: client, bookingCount: 1, lastBooking: booking.slotDate });
+      clientMap.set(clientId, {
+        user: client,
+        bookingCount: sessionCount,
+        lastBooking: booking.slotDate,
+        lastProgram,
+        upcomingSessions,
+      });
     }
   }
 
