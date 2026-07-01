@@ -108,11 +108,31 @@ const listPublicTrainerAvailability = asyncHandler(async (req: RequestWithUser, 
 const createTrainer = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
   const body = req.body as CreateTrainerRequest;
 
+  const normalizedEmail = body.email.trim().toLowerCase();
+  const [emailOwner, phoneOwner] = await Promise.all([
+    User.findOne({ email: normalizedEmail }).select('_id email role').lean(),
+    User.findOne({ phone: body.phone.trim() }).select('_id email role').lean(),
+  ]);
+
+  if (emailOwner) {
+    throw new AppError(
+      `A ${emailOwner.role} account already uses ${normalizedEmail}. Use a different email for this trainer.`,
+      HTTP_STATUS.CONFLICT
+    );
+  }
+
+  if (phoneOwner) {
+    throw new AppError(
+      `This phone number already belongs to ${phoneOwner.email}. Enter a different phone number before creating the trainer.`,
+      HTTP_STATUS.CONFLICT
+    );
+  }
+
   const user = await User.create({
     firstName: body.firstName,
     lastName: body.lastName,
-    email: body.email,
-    phone: body.phone,
+    email: normalizedEmail,
+    phone: body.phone.trim(),
     password: body.password,
     role: UserRole.TRAINER,
     bio: body.bio,

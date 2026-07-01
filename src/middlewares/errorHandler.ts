@@ -29,6 +29,22 @@ const errorHandler = (
     return;
   }
 
+  const databaseError = err as Error & {
+    code?: number;
+    keyPattern?: Record<string, number>;
+  };
+
+  if (databaseError.code === 11000) {
+    const field = Object.keys(databaseError.keyPattern || {})[0] || 'value';
+    sendError(
+      res,
+      `An account with this ${field} already exists. Please use a different ${field}.`,
+      HTTP_STATUS.CONFLICT,
+      isDevelopment ? err.stack : undefined
+    );
+    return;
+  }
+
   console.error('Unhandled error:', err);
   sendError(
     res,

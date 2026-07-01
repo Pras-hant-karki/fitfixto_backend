@@ -13,6 +13,7 @@ import wishlistRouter from './wishlist.route';
 import voucherRouter from './voucher.route';
 import paymentRouter from './payment.route';
 import partnerGymRouter from './partnerGym.route';
+import bookingRouter from './booking.route';
 
 const apiRouter = Router();
 
@@ -30,5 +31,6 @@ apiRouter.use('/wishlist', wishlistRouter);
 apiRouter.use('/vouchers', voucherRouter);
 apiRouter.use('/payments', paymentRouter);
 apiRouter.use('/partner-gyms', partnerGymRouter);
+apiRouter.use('/bookings', bookingRouter);
 
 export default apiRouter;
