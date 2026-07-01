@@ -7,11 +7,14 @@ import {
   listMyReviews,
   listAdminReviews,
   moderateReview,
+  listFeaturedReviews,
+  featureReview,
 } from '../controllers/review.controller';
 import { validateBody, validateParams, validateQuery } from '../middlewares/validation';
 import {
   adminReviewListQuerySchema,
   createReviewSchema,
+  reviewFeatureSchema,
   reviewIdParamSchema,
   reviewListQuerySchema,
   reviewModerationSchema,
@@ -23,6 +26,7 @@ import { UserRole } from '../types/index';
 const router = Router();
 
 router.get('/', validateQuery(reviewListQuerySchema), listReviews);
+router.get('/featured', listFeaturedReviews);
 router.get('/my', authenticate, validateQuery(reviewListQuerySchema), listMyReviews);
 router.get('/admin', authenticate, authorize(UserRole.ADMIN), validateQuery(adminReviewListQuerySchema), listAdminReviews);
 router.post('/', authenticate, validateBody(createReviewSchema), createReview);
@@ -33,6 +37,14 @@ router.patch(
   validateParams(reviewIdParamSchema),
   validateBody(reviewModerationSchema),
   moderateReview
+);
+router.patch(
+  '/admin/:reviewId/feature',
+  authenticate,
+  authorize(UserRole.ADMIN),
+  validateParams(reviewIdParamSchema),
+  validateBody(reviewFeatureSchema),
+  featureReview
 );
 router.put('/:reviewId', authenticate, validateParams(reviewIdParamSchema), validateBody(updateReviewSchema), updateReview);
 router.delete('/:reviewId', authenticate, validateParams(reviewIdParamSchema), deleteReview);

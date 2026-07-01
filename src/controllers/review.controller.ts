@@ -12,6 +12,7 @@ import { OrderStatus, UserRole } from '../types/index';
 import {
   AdminReviewListQueryRequest,
   CreateReviewRequest,
+  ReviewFeatureRequest,
   ReviewListQueryRequest,
   ReviewModerationRequest,
   UpdateReviewRequest,
@@ -329,4 +330,41 @@ const moderateReview = asyncHandler(async (req: RequestWithUser, res: Response):
   ) as any;
 });
 
-export { createReview, updateReview, deleteReview, listReviews, listMyReviews, listAdminReviews, moderateReview };
+const listFeaturedReviews = asyncHandler(async (_req, res: Response): Promise<void> => {
+  const reviews = await Review.find({
+    isFeatured: true,
+    isActive: true,
+    moderationStatus: 'approved',
+  })
+    .populate('userId', 'firstName lastName')
+    .populate('productId', 'name')
+    .sort({ updatedAt: -1 })
+    .limit(10);
+
+  return sendSuccess(res, 'Featured reviews fetched successfully', { reviews }, HTTP_STATUS.OK) as any;
+});
+
+const featureReview = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const { reviewId } = req.params;
+  const { isFeatured } = req.body as ReviewFeatureRequest;
+
+  const review = await Review.findByIdAndUpdate(
+    reviewId,
+    { isFeatured },
+    { new: true }
+  )
+    .populate('productId', 'name category brand images price averageRating ratingCount')
+    .populate('userId', 'firstName lastName email')
+    .populate('orderId', 'orderNumber status totalAmount createdAt');
+
+  if (!review) throw new AppError('Review not found', HTTP_STATUS.NOT_FOUND);
+
+  return sendSuccess(
+    res,
+    isFeatured ? 'Review featured on homepage' : 'Review removed from homepage',
+    { review },
+    HTTP_STATUS.OK
+  ) as any;
+});
+
+export { createReview, updateReview, deleteReview, listReviews, listMyReviews, listAdminReviews, moderateReview, listFeaturedReviews, featureReview };

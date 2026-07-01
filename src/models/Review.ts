@@ -10,6 +10,7 @@ export interface IReview extends Document {
   comment?: string;
   isActive: boolean;
   moderationStatus: 'approved' | 'removed';
+  isFeatured: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -59,6 +60,11 @@ const reviewSchema = new Schema<IReview>(
       type: String,
       enum: ['approved', 'removed'],
       default: 'approved',
+      index: true,
+    },
+    isFeatured: {
+      type: Boolean,
+      default: false,
       index: true,
     },
   },

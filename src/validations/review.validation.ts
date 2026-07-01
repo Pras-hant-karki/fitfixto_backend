@@ -63,3 +63,11 @@ export const reviewModerationSchema = z
   .strict();
 
 export type ReviewModerationRequest = z.infer<typeof reviewModerationSchema>;
+
+export const reviewFeatureSchema = z
+  .object({
+    isFeatured: z.boolean(),
+  })
+  .strict();
+
+export type ReviewFeatureRequest = z.infer<typeof reviewFeatureSchema>;
