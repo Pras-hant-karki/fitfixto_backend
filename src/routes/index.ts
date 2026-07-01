@@ -15,6 +15,7 @@ import paymentRouter from './payment.route';
 import partnerGymRouter from './partnerGym.route';
 import bookingRouter from './booking.route';
 import serviceRouter from './service.route';
+import serviceBookingRouter from './serviceBooking.route';
 import discountRouter from './discount.route';
 
 const apiRouter = Router();
@@ -35,6 +36,7 @@ apiRouter.use('/payments', paymentRouter);
 apiRouter.use('/partner-gyms', partnerGymRouter);
 apiRouter.use('/bookings', bookingRouter);
 apiRouter.use('/services', serviceRouter);
+apiRouter.use('/service-bookings', serviceBookingRouter);
 apiRouter.use('/discounts', discountRouter);
 
 export default apiRouter;
