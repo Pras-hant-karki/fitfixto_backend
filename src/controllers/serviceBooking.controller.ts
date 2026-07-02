@@ -75,3 +75,23 @@ export const cancelMyServiceBooking = asyncHandler(async (req: RequestWithUser, 
   await booking.save();
   return sendSuccess(res, 'Booking cancelled', { booking }) as any;
 });
+
+export const submitServiceClientReview = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const { bookingId } = req.params;
+  const { rating, comment } = req.body as { rating: number; comment?: string };
+
+  if (!rating || rating < 1 || rating > 5) {
+    throw new AppError('Rating must be between 1 and 5', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  const booking = await ServiceBooking.findOne({ _id: bookingId, clientId: req.user?._id, status: 'completed' });
+  if (!booking) throw new AppError('Completed service booking not found', HTTP_STATUS.NOT_FOUND);
+  if (booking.clientRating) throw new AppError('You have already reviewed this service', HTTP_STATUS.CONFLICT);
+
+  booking.clientRating = rating;
+  booking.clientComment = comment?.trim();
+  await booking.save();
+
+  await booking.populate('serviceId', SERVICE_POPULATE);
+  return sendSuccess(res, 'Review submitted successfully', { booking }, HTTP_STATUS.OK) as any;
+});

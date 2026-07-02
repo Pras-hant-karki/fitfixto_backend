@@ -6,6 +6,7 @@ import {
   getMyClients,
   getMyTrainerBookings,
   updateBookingStatus,
+  submitClientReview,
 } from '../controllers/booking.controller';
 import { authenticate, authorize } from '../middlewares/auth';
 import { validateBody, validateParams } from '../middlewares/validation';
@@ -35,6 +36,12 @@ router.patch(
   authenticate,
   validateParams(bookingIdParamSchema),
   cancelMyBooking
+);
+router.patch(
+  '/:bookingId/review',
+  authenticate,
+  validateParams(bookingIdParamSchema),
+  submitClientReview
 );
 
 export default router;

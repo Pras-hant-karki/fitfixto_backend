@@ -22,6 +22,8 @@ export interface IBooking extends Document {
   status: BookingStatus;
   notes?: string;
   trainerNotes?: string;
+  clientRating?: number;
+  clientComment?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -74,6 +76,8 @@ const bookingSchema = new Schema<IBooking>(
       trim: true,
       maxlength: [500, 'Trainer notes must be at most 500 characters'],
     },
+    clientRating: { type: Number, min: 1, max: 5 },
+    clientComment: { type: String, trim: true, maxlength: 500 },
   },
   { timestamps: true }
 );

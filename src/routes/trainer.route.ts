@@ -10,6 +10,8 @@ import {
   deleteTrainerProgram,
   getPublicTrainer,
   listMyTrainerAvailability,
+  listMyTrainerCalendarAvailability,
+  saveMyTrainerCalendarAvailability,
   listMyTrainerPrograms,
   listPublicTrainerAvailability,
   listPublicTrainerPrograms,
@@ -73,6 +75,8 @@ router.put(
 );
 router.delete('/programs/:programId', authenticate, authorize(UserRole.TRAINER), validateParams(trainerProgramIdParamSchema), deleteTrainerProgram);
 router.get('/availability/me', authenticate, authorize(UserRole.TRAINER), listMyTrainerAvailability);
+router.get('/availability/dates', authenticate, authorize(UserRole.TRAINER), listMyTrainerCalendarAvailability);
+router.post('/availability/dates', authenticate, authorize(UserRole.TRAINER), saveMyTrainerCalendarAvailability);
 router.post('/availability', authenticate, authorize(UserRole.TRAINER), validateBody(trainerAvailabilitySchema), createTrainerAvailability);
 router.put(
   '/availability/:slotId',

@@ -14,6 +14,8 @@ export interface IServiceBooking extends Document {
   amount: number;
   status: ServiceBookingStatus;
   adminNotes?: string;
+  clientRating?: number;
+  clientComment?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -34,6 +36,8 @@ const serviceBookingSchema = new Schema<IServiceBooking>(
       default: 'pending',
     },
     adminNotes: { type: String, trim: true, maxlength: 500 },
+    clientRating: { type: Number, min: 1, max: 5 },
+    clientComment: { type: String, trim: true, maxlength: 500 },
   },
   { timestamps: true }
 );

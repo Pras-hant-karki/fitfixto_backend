@@ -418,6 +418,14 @@ const cancelOrder = asyncHandler(async (req: RequestWithUser, res: Response): Pr
     throw new AppError('Order not found', HTTP_STATUS.NOT_FOUND);
   }
 
+  // For delivered orders, allow return requests
+  if (order.status === OrderStatus.DELIVERED) {
+    order.status = OrderStatus.RETURNED;
+    order.cancellationReason = reason;
+    await order.save();
+    return sendSuccess(res, 'Return request submitted successfully', { order }, HTTP_STATUS.OK) as any;
+  }
+
   if (![OrderStatus.PENDING, OrderStatus.CONFIRMED].includes(order.status)) {
     throw new AppError('Order cannot be cancelled at this stage', HTTP_STATUS.BAD_REQUEST);
   }

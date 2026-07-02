@@ -5,6 +5,7 @@ import {
   getAllServiceBookings,
   getMyServiceBookings,
   updateServiceBookingStatus,
+  submitServiceClientReview,
 } from '../controllers/serviceBooking.controller';
 import { authenticate, authorize } from '../middlewares/auth';
 import { validateBody, validateParams } from '../middlewares/validation';
@@ -33,6 +34,12 @@ router.patch(
   authenticate,
   validateParams(serviceBookingIdParamSchema),
   cancelMyServiceBooking
+);
+router.patch(
+  '/:bookingId/review',
+  authenticate,
+  validateParams(serviceBookingIdParamSchema),
+  submitServiceClientReview
 );
 
 export default router;

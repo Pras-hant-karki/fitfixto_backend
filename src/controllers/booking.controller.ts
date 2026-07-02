@@ -191,6 +191,25 @@ const getMyClients = asyncHandler(async (req: RequestWithUser, res: Response): P
   return sendSuccess(res, 'Trainer clients fetched successfully', { clients }, HTTP_STATUS.OK) as any;
 });
 
+const submitClientReview = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const { bookingId } = req.params;
+  const { rating, comment } = req.body as { rating: number; comment?: string };
+
+  if (!rating || rating < 1 || rating > 5) {
+    throw new AppError('Rating must be between 1 and 5', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  const booking = await Booking.findOne({ _id: bookingId, clientId: req.user?._id, status: 'completed' });
+  if (!booking) throw new AppError('Completed booking not found', HTTP_STATUS.NOT_FOUND);
+  if (booking.clientRating) throw new AppError('You have already reviewed this session', HTTP_STATUS.CONFLICT);
+
+  booking.clientRating = rating;
+  booking.clientComment = comment?.trim();
+  await booking.save();
+
+  return sendSuccess(res, 'Review submitted successfully', { booking }, HTTP_STATUS.OK) as any;
+});
+
 export {
   createBooking,
   getMyClientBookings,
@@ -198,4 +217,5 @@ export {
   updateBookingStatus,
   cancelMyBooking,
   getMyClients,
+  submitClientReview,
 };
