@@ -9,11 +9,12 @@ import Order from '../models/Order';
 import Trainer from '../models/Trainer';
 import { UserRole } from '../types/index';
 
-type AnalyticsRange = 'today' | 'weekly' | 'quarterly' | 'half-yearly' | 'yearly';
+type AnalyticsRange = 'today' | 'weekly' | 'monthly' | 'quarterly' | 'half-yearly' | 'yearly';
 
 const rangeConfig: Record<AnalyticsRange, { days: number; buckets: number; label: string }> = {
   today: { days: 1, buckets: 24, label: 'hour' },
   weekly: { days: 7, buckets: 7, label: 'day' },
+  monthly: { days: 30, buckets: 30, label: 'day' },
   quarterly: { days: 90, buckets: 13, label: 'week' },
   'half-yearly': { days: 182, buckets: 6, label: 'month' },
   yearly: { days: 365, buckets: 12, label: 'month' },
@@ -36,6 +37,10 @@ const getBucketKey = (date: Date, range: AnalyticsRange) => {
     return date.toLocaleDateString('en-US', { weekday: 'short' });
   }
 
+  if (range === 'monthly') {
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
+
   if (range === 'quarterly') {
     const start = getRangeStart(range);
     const diffDays = Math.floor((date.getTime() - start.getTime()) / (24 * 60 * 60 * 1000));
@@ -54,7 +59,7 @@ const buildBuckets = (range: AnalyticsRange) => {
 
     if (range === 'today') {
       date.setHours(index, 0, 0, 0);
-    } else if (range === 'weekly') {
+    } else if (range === 'weekly' || range === 'monthly') {
       date.setDate(start.getDate() + index);
     } else if (range === 'quarterly') {
       date.setDate(start.getDate() + index * 7);

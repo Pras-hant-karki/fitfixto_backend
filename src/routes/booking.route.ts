@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   cancelMyBooking,
   createBooking,
+  getAllBookingsAdmin,
   getMyClientBookings,
   getMyClients,
   getMyTrainerBookings,
@@ -20,6 +21,7 @@ import { UserRole } from '../types/index';
 const router = Router();
 
 router.post('/', authenticate, validateBody(createBookingSchema), createBooking);
+router.get('/admin/all', authenticate, authorize(UserRole.ADMIN), getAllBookingsAdmin);
 router.get('/my', authenticate, getMyClientBookings);
 router.get('/trainer', authenticate, authorize(UserRole.TRAINER), getMyTrainerBookings);
 router.get('/trainer/clients', authenticate, authorize(UserRole.TRAINER), getMyClients);

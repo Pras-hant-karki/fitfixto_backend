@@ -129,7 +129,7 @@ const login = asyncHandler(async (req: Request, res: Response): Promise<void> =>
   }
 
   if (user.role === 'admin') {
-    throw new AppError('Admin accounts must use the admin login page', HTTP_STATUS.FORBIDDEN);
+    throw new AppError('Invalid email or password', HTTP_STATUS.UNAUTHORIZED);
   }
 
   const { accessToken, refreshToken } = generateTokenPair(

@@ -210,6 +210,14 @@ const submitClientReview = asyncHandler(async (req: RequestWithUser, res: Respon
   return sendSuccess(res, 'Review submitted successfully', { booking }, HTTP_STATUS.OK) as any;
 });
 
+const getAllBookingsAdmin = asyncHandler(async (_req: RequestWithUser, res: Response): Promise<void> => {
+  const bookings = await Booking.find()
+    .populate({ path: 'trainerId', populate: { path: 'userId', select: 'firstName lastName email profilePicture' } })
+    .populate('clientId', 'firstName lastName email')
+    .sort({ createdAt: -1 });
+  return sendSuccess(res, 'All bookings', { bookings }, HTTP_STATUS.OK) as any;
+});
+
 export {
   createBooking,
   getMyClientBookings,
@@ -218,4 +226,5 @@ export {
   cancelMyBooking,
   getMyClients,
   submitClientReview,
+  getAllBookingsAdmin,
 };
