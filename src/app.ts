@@ -17,8 +17,8 @@ app.use(requestLogger);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve static files from uploads directory (cross-origin so frontend on port 3000 can load images)
-app.use('/uploads', (req, res, next) => {
+// Serve uploaded assets at /assets (cross-origin so frontend on port 3000 can load images)
+app.use('/assets', (req, res, next) => {
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   next();
 }, express.static(resolveUploadDir(env.UPLOAD_DIR)));

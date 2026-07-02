@@ -9,6 +9,7 @@ import {
   deleteTrainerAvailability,
   deleteTrainerProgram,
   getPublicTrainer,
+  getPublicTrainerReviews,
   listMyTrainerAvailability,
   listMyTrainerCalendarAvailability,
   saveMyTrainerCalendarAvailability,
@@ -27,7 +28,7 @@ import {
   uploadTrainerProgramImage,
 } from '../controllers/trainer.controller';
 import { authenticate, authorize } from '../middlewares/auth';
-import { uploadProfileImage, uploadTrainerApplicationFiles as trainerApplicationUpload, uploadTrainerProgramImage as trainerProgramUpload } from '../middlewares/fileUpload';
+import { uploadTrainerProgramImage as trainerPhotoUpload, uploadTrainerApplicationFiles as trainerApplicationUpload, uploadTrainerProgramImage as trainerProgramUpload } from '../middlewares/fileUpload';
 import { validateBody, validateParams } from '../middlewares/validation';
 import {
   createTrainerSchema,
@@ -58,6 +59,7 @@ router.post(
 router.get('/public', listPublicTrainers);
 router.get('/public/:trainerId/programs', validateParams(trainerIdParamSchema), listPublicTrainerPrograms);
 router.get('/public/:trainerId/availability', validateParams(trainerIdParamSchema), listPublicTrainerAvailability);
+router.get('/public/:trainerId/reviews', validateParams(trainerIdParamSchema), getPublicTrainerReviews);
 router.get('/public/:trainerId', validateParams(trainerIdParamSchema), getPublicTrainer);
 router.get('/applications', authenticate, authorize(UserRole.ADMIN), listTrainerApplications);
 router.patch('/applications/:applicationId/approve', authenticate, authorize(UserRole.ADMIN), validateParams(trainerApplicationIdParamSchema), approveTrainerApplication);
@@ -89,7 +91,7 @@ router.put(
 router.delete('/availability/:slotId', authenticate, authorize(UserRole.TRAINER), validateParams(trainerAvailabilityIdParamSchema), deleteTrainerAvailability);
 router.get('/', authenticate, authorize(UserRole.ADMIN), listTrainers);
 router.post('/', authenticate, authorize(UserRole.ADMIN), validateBody(createTrainerSchema), createTrainer);
-router.post('/upload-photo', authenticate, authorize(UserRole.ADMIN), uploadProfileImage.single('photo'), uploadTrainerPhoto);
+router.post('/upload-photo', authenticate, authorize(UserRole.ADMIN), trainerPhotoUpload.single('photo'), uploadTrainerPhoto);
 router.put('/:trainerId', authenticate, authorize(UserRole.ADMIN), validateParams(trainerIdParamSchema), validateBody(updateTrainerSchema), updateTrainer);
 router.delete('/:trainerId', authenticate, authorize(UserRole.ADMIN), validateParams(trainerIdParamSchema), deleteTrainer);
 

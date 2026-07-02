@@ -237,7 +237,7 @@ const uploadProductImages = asyncHandler(async (req: RequestWithUser, res: Respo
 
   const images = req.files.map((file) => ({
     filename: file.filename,
-    path: `/uploads/${file.filename}`,
+    path: `products/${file.filename}`,
     mimetype: file.mimetype,
   }));
 

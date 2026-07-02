@@ -10,6 +10,7 @@ import TrainerAvailableDate from '../models/TrainerAvailableDate';
 import TrainerApplication from '../models/TrainerApplication';
 import TrainerProgram from '../models/TrainerProgram';
 import User from '../models/User';
+import Booking from '../models/Booking';
 import { UserRole } from '../types/index';
 import { sendTrainerCredentialsEmail } from '../services/emailService';
 import {
@@ -297,7 +298,7 @@ const uploadTrainerPhoto = asyncHandler(async (req: RequestWithUser, res: Respon
 
   const photo = {
     filename: req.file.filename,
-    path: `/uploads/${req.file.filename}`,
+    path: `trainers/${req.file.filename}`,
     mimetype: req.file.mimetype,
   };
 
@@ -317,8 +318,8 @@ const uploadTrainerApplicationFiles = asyncHandler(async (req: RequestWithUser, 
     res,
     'Trainer application files uploaded successfully',
     {
-      photo: photo ? `/uploads/${photo.filename}` : null,
-      certificates: certificates.map((file) => `/uploads/${file.filename}`),
+      photo: photo ? `trainers/${photo.filename}` : null,
+      certificates: certificates.map((file) => `trainers/${file.filename}`),
     },
     HTTP_STATUS.OK
   ) as any;
@@ -362,7 +363,7 @@ const uploadTrainerProgramImage = asyncHandler(async (req: RequestWithUser, res:
   return sendSuccess(
     res,
     'Program image uploaded successfully',
-    { image: `/uploads/${req.file.filename}` },
+    { image: `trainers/${req.file.filename}` },
     HTTP_STATUS.OK
   ) as any;
 });
@@ -470,6 +471,16 @@ const deleteTrainerAvailability = asyncHandler(async (req: RequestWithUser, res:
   return sendSuccess(res, 'Trainer availability deleted successfully', { slotId }, HTTP_STATUS.OK) as any;
 });
 
+const getPublicTrainerReviews = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const { trainerId } = req.params;
+  const reviews = await Booking.find({ trainerId, clientRating: { $exists: true, $ne: null } })
+    .populate('clientId', 'firstName lastName profilePicture')
+    .select('clientRating clientComment slotDate timeLabel clientId')
+    .sort({ updatedAt: -1 })
+    .lean();
+  return sendSuccess(res, 'Trainer reviews', { reviews }, HTTP_STATUS.OK) as any;
+});
+
 export {
   listTrainers,
   listPublicTrainers,
@@ -496,4 +507,5 @@ export {
   createTrainerAvailability,
   updateTrainerAvailability,
   deleteTrainerAvailability,
+  getPublicTrainerReviews,
 };

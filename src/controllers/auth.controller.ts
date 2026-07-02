@@ -542,8 +542,7 @@ const uploadProfileImage = asyncHandler(
       );
     }
 
-    // Store the file path relative to the uploads directory
-    const relativePath = `/uploads/${req.file.filename}`;
+    const relativePath = `users/${req.file.filename}`;
     user.profilePicture = relativePath;
     await user.save();
 
