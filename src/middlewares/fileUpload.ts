@@ -53,6 +53,7 @@ const imageUpload: Multer = multer({
 const uploadProfileImage = imageUpload;
 const uploadProductImages = imageUpload;
 const uploadPartnerGymImages = imageUpload;
+const uploadTrainerProgramImage = imageUpload;
 
 const applicationFileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
   const allowedMimes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
@@ -73,4 +74,4 @@ const uploadTrainerApplicationFiles = multer({
   },
 });
 
-export { uploadProfileImage, uploadProductImages, uploadPartnerGymImages, uploadTrainerApplicationFiles };
+export { uploadProfileImage, uploadProductImages, uploadPartnerGymImages, uploadTrainerProgramImage, uploadTrainerApplicationFiles };

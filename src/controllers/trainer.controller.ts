@@ -349,6 +349,21 @@ const createTrainerProgram = asyncHandler(async (req: RequestWithUser, res: Resp
   return sendSuccess(res, 'Trainer program created successfully', { program }, HTTP_STATUS.CREATED) as any;
 });
 
+const uploadTrainerProgramImage = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  await getCurrentTrainer(req);
+
+  if (!req.file) {
+    throw new AppError('No program image uploaded', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  return sendSuccess(
+    res,
+    'Program image uploaded successfully',
+    { image: `/uploads/${req.file.filename}` },
+    HTTP_STATUS.OK
+  ) as any;
+});
+
 const updateTrainerProgram = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
   const trainer = await getCurrentTrainer(req);
   const body = req.body as UpdateTrainerProgramRequest;
@@ -442,6 +457,7 @@ export {
   rejectTrainerApplication,
   listMyTrainerPrograms,
   createTrainerProgram,
+  uploadTrainerProgramImage,
   updateTrainerProgram,
   deleteTrainerProgram,
   listMyTrainerAvailability,

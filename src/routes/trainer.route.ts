@@ -22,9 +22,10 @@ import {
   updateTrainerProgram,
   uploadTrainerPhoto,
   uploadTrainerApplicationFiles,
+  uploadTrainerProgramImage,
 } from '../controllers/trainer.controller';
 import { authenticate, authorize } from '../middlewares/auth';
-import { uploadProfileImage, uploadTrainerApplicationFiles as trainerApplicationUpload } from '../middlewares/fileUpload';
+import { uploadProfileImage, uploadTrainerApplicationFiles as trainerApplicationUpload, uploadTrainerProgramImage as trainerProgramUpload } from '../middlewares/fileUpload';
 import { validateBody, validateParams } from '../middlewares/validation';
 import {
   createTrainerSchema,
@@ -61,6 +62,7 @@ router.patch('/applications/:applicationId/approve', authenticate, authorize(Use
 router.patch('/applications/:applicationId/reject', authenticate, authorize(UserRole.ADMIN), validateParams(trainerApplicationIdParamSchema), rejectTrainerApplication);
 router.get('/programs/me', authenticate, authorize(UserRole.TRAINER), listMyTrainerPrograms);
 router.post('/programs', authenticate, authorize(UserRole.TRAINER), validateBody(trainerProgramSchema), createTrainerProgram);
+router.post('/programs/upload-image', authenticate, authorize(UserRole.TRAINER), trainerProgramUpload.single('image'), uploadTrainerProgramImage);
 router.put(
   '/programs/:programId',
   authenticate,
