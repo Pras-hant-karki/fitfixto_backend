@@ -6,6 +6,7 @@ import { AppError } from '../utils/appError';
 import { RequestWithUser } from '../middlewares/auth';
 import Trainer from '../models/Trainer';
 import TrainerAvailability from '../models/TrainerAvailability';
+import TrainerAvailableDate from '../models/TrainerAvailableDate';
 import TrainerApplication from '../models/TrainerApplication';
 import TrainerProgram from '../models/TrainerProgram';
 import User from '../models/User';
@@ -15,6 +16,7 @@ import {
   CreateTrainerRequest,
   TrainerApplicationRequest,
   TrainerAvailabilityRequest,
+  TrainerCalendarAvailabilityRequest,
   TrainerProgramRequest,
   UpdateTrainerAvailabilityRequest,
   UpdateTrainerProgramRequest,
@@ -101,8 +103,9 @@ const listPublicTrainerAvailability = asyncHandler(async (req: RequestWithUser, 
   }
 
   const availability = await TrainerAvailability.find({ trainerId, isActive: true }).sort({ dayOfWeek: 1, timeLabel: 1 });
+  const availableDates = await TrainerAvailableDate.find({ trainerId, date: { $gte: new Date() } }).sort({ date: 1 });
 
-  return sendSuccess(res, 'Trainer availability fetched successfully', { availability }, HTTP_STATUS.OK) as any;
+  return sendSuccess(res, 'Trainer availability fetched successfully', { availability, availableDates }, HTTP_STATUS.OK) as any;
 });
 
 const createTrainer = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
@@ -400,6 +403,33 @@ const listMyTrainerAvailability = asyncHandler(async (req: RequestWithUser, res:
   return sendSuccess(res, 'Trainer availability fetched successfully', { availability }, HTTP_STATUS.OK) as any;
 });
 
+const listMyTrainerCalendarAvailability = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const trainer = await getCurrentTrainer(req);
+  const availableDates = await TrainerAvailableDate.find({ trainerId: trainer._id }).sort({ date: 1 });
+  return sendSuccess(res, 'Trainer calendar availability fetched successfully', { availableDates }, HTTP_STATUS.OK) as any;
+});
+
+const saveMyTrainerCalendarAvailability = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const trainer = await getCurrentTrainer(req);
+  const body = req.body as TrainerCalendarAvailabilityRequest;
+  const start = new Date();
+  start.setUTCHours(0, 0, 0, 0);
+  const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 3, 1));
+  const dates = Array.from(new Set(body.dates)).map((value) => new Date(`${value}T00:00:00.000Z`));
+
+  if (dates.some((date) => Number.isNaN(date.getTime()) || date < start || date >= end)) {
+    throw new AppError('Availability dates must be within the current three-month calendar', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  await TrainerAvailableDate.deleteMany({ trainerId: trainer._id });
+  if (dates.length) {
+    await TrainerAvailableDate.insertMany(dates.map((date) => ({ trainerId: trainer._id, date })));
+  }
+
+  const availableDates = await TrainerAvailableDate.find({ trainerId: trainer._id }).sort({ date: 1 });
+  return sendSuccess(res, 'Trainer calendar availability saved successfully', { availableDates }, HTTP_STATUS.OK) as any;
+});
+
 const createTrainerAvailability = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
   const trainer = await getCurrentTrainer(req);
   const body = req.body as TrainerAvailabilityRequest;
@@ -461,6 +491,8 @@ export {
   updateTrainerProgram,
   deleteTrainerProgram,
   listMyTrainerAvailability,
+  listMyTrainerCalendarAvailability,
+  saveMyTrainerCalendarAvailability,
   createTrainerAvailability,
   updateTrainerAvailability,
   deleteTrainerAvailability,

@@ -132,6 +132,14 @@ export const updateTrainerAvailabilitySchema = trainerAvailabilitySchema.partial
 
 export type UpdateTrainerAvailabilityRequest = z.infer<typeof updateTrainerAvailabilitySchema>;
 
+export const trainerCalendarAvailabilitySchema = z
+  .object({
+    dates: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Dates must use YYYY-MM-DD format')).max(100),
+  })
+  .strict();
+
+export type TrainerCalendarAvailabilityRequest = z.infer<typeof trainerCalendarAvailabilitySchema>;
+
 export const trainerAvailabilityIdParamSchema = z
   .object({
     slotId: z.string().min(1, 'Availability slot ID is required'),
