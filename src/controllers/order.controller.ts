@@ -1,3 +1,4 @@
+import Stripe from 'stripe';
 import { Request, Response } from 'express';
 import { Types } from 'mongoose';
 import { asyncHandler } from '../utils/asyncHandler';
@@ -11,6 +12,7 @@ import Order from '../models/Order';
 import DeliveryAddress from '../models/DeliveryAddress';
 import Voucher from '../models/Voucher';
 import User from '../models/User';
+import env from '../config/env';
 import {
   sendOrderCancelledEmail,
   sendOrderConfirmationEmail,
@@ -73,8 +75,7 @@ const placeOrder = asyncHandler(async (req: RequestWithUser, res: Response): Pro
     throw new AppError('Not authenticated', HTTP_STATUS.UNAUTHORIZED);
   }
 
-  const { deliveryAddressId, paymentMethod, notes, voucherCode, shippingMethod = 'standard', selectedProductIds } = req.body as PlaceOrderRequest;
-  const estimatedDeliveryDate: string | undefined = req.body.estimatedDeliveryDate;
+  const { deliveryAddressId, paymentMethod, notes, voucherCode, shippingMethod = 'standard', selectedProductIds, estimatedDeliveryDate, stripePaymentIntentId } = req.body as PlaceOrderRequest & { estimatedDeliveryDate?: string; stripePaymentIntentId?: string };
   const shippingAmount = SHIPPING_AMOUNTS[shippingMethod];
   const selectedProductIdSet = new Set(selectedProductIds ?? []);
 
@@ -186,17 +187,35 @@ const placeOrder = asyncHandler(async (req: RequestWithUser, res: Response): Pro
     }
   }
 
+  // Verify Stripe payment before decrementing stock
+  if (paymentMethod === 'card') {
+    if (!stripePaymentIntentId) throw new AppError('Stripe payment intent ID is required for card payments', HTTP_STATUS.BAD_REQUEST);
+    if (!env.STRIPE_SECRET_KEY) throw new AppError('Stripe is not configured', HTTP_STATUS.INTERNAL_SERVER_ERROR);
+
+    const existingOrder = await Order.findOne({ stripePaymentIntentId });
+    if (existingOrder) throw new AppError('This payment has already been used to place an order', HTTP_STATUS.CONFLICT);
+
+    const stripe = new Stripe(env.STRIPE_SECRET_KEY, { apiVersion: '2026-06-24.dahlia' as any });
+    const pi = await stripe.paymentIntents.retrieve(stripePaymentIntentId);
+    if (pi.status !== 'succeeded') throw new AppError('Card payment has not been completed', HTTP_STATUS.BAD_REQUEST);
+
+    const expectedAmount = Math.round(totalAmount * 100);
+    if (pi.amount !== expectedAmount) throw new AppError('Payment amount does not match order total', HTTP_STATUS.BAD_REQUEST);
+  }
+
   for (const item of selectedCartItems) {
     const product = item.productId as unknown as CartProduct;
     await Product.findByIdAndUpdate(product._id, { $inc: { stock: -item.quantity } });
   }
+
+  const isCardPayment = paymentMethod === 'card';
 
   const order = await Order.create({
     userId: req.user._id,
     items,
     deliveryAddressId,
     paymentMethod,
-    paymentStatus: paymentMethod === 'cash_on_delivery' ? PaymentStatus.PENDING : PaymentStatus.PENDING,
+    paymentStatus: isCardPayment ? PaymentStatus.COMPLETED : PaymentStatus.PENDING,
     status: OrderStatus.PENDING,
     voucherCode: appliedVoucherCode,
     subtotal,
@@ -207,6 +226,8 @@ const placeOrder = asyncHandler(async (req: RequestWithUser, res: Response): Pro
     totalAmount,
     notes,
     estimatedDeliveryDate: estimatedDeliveryDate ? new Date(estimatedDeliveryDate) : undefined,
+    stripePaymentIntentId: isCardPayment ? stripePaymentIntentId : undefined,
+    paidAt: isCardPayment ? new Date() : undefined,
   });
 
   const orderedProductIds = new Set(items.map((item) => item.productId.toString()));

@@ -6,6 +6,7 @@ import {
   initiateKhaltiPayment,
   verifyKhaltiPayment,
 } from '../controllers/payment.controller';
+import { createPaymentIntent } from '../controllers/stripe.controller';
 import { authenticate } from '../middlewares/auth';
 import { validateBody } from '../middlewares/validation';
 import {
@@ -28,5 +29,8 @@ router.post('/esewa/verify', authenticate, validateBody(verifyEsewaPaymentSchema
 // Khalti payment
 router.post('/khalti/initiate', authenticate, validateBody(initiateKhaltiPaymentSchema), initiateKhaltiPayment);
 router.post('/khalti/verify', authenticate, validateBody(verifyKhaltiPaymentSchema), verifyKhaltiPayment);
+
+// Stripe card payment — intent creation (webhook is mounted in app.ts before express.json())
+router.post('/stripe/intent', authenticate, createPaymentIntent);
 
 export default router;

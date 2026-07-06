@@ -8,12 +8,17 @@ import { requestLogger } from './middlewares/requestLogger';
 import { corsMiddleware, securityHeaders } from './middlewares/security';
 import apiRouter from './routes';
 import { resolveUploadDir } from './utils/uploadPath';
+import { stripeWebhook } from './controllers/stripe.controller';
 
 const app = express();
 
 app.use(securityHeaders);
 app.use(corsMiddleware);
 app.use(requestLogger);
+
+// Stripe webhook must receive raw body — register before express.json()
+app.post(`${API_PREFIX}/payments/stripe/webhook`, express.raw({ type: 'application/json' }), stripeWebhook);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
