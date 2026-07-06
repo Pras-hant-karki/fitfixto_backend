@@ -160,7 +160,7 @@ const getAnalytics = asyncHandler(async (req: RequestWithUser, res: Response): P
   const startDate = getRangeStart(range);
 
   const [orders, trainers] = await Promise.all([
-    Order.find({ createdAt: { $gte: startDate } }).sort({ createdAt: 1 }),
+    Order.find({ createdAt: { $gte: startDate }, status: 'delivered' }).sort({ createdAt: 1 }),
     Trainer.find({ isSuspended: false }).populate('userId', 'firstName lastName profilePicture'),
   ]);
 

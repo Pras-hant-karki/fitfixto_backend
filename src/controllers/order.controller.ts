@@ -74,6 +74,7 @@ const placeOrder = asyncHandler(async (req: RequestWithUser, res: Response): Pro
   }
 
   const { deliveryAddressId, paymentMethod, notes, voucherCode, shippingMethod = 'standard', selectedProductIds } = req.body as PlaceOrderRequest;
+  const estimatedDeliveryDate: string | undefined = req.body.estimatedDeliveryDate;
   const shippingAmount = SHIPPING_AMOUNTS[shippingMethod];
   const selectedProductIdSet = new Set(selectedProductIds ?? []);
 
@@ -205,6 +206,7 @@ const placeOrder = asyncHandler(async (req: RequestWithUser, res: Response): Pro
     taxAmount,
     totalAmount,
     notes,
+    estimatedDeliveryDate: estimatedDeliveryDate ? new Date(estimatedDeliveryDate) : undefined,
   });
 
   const orderedProductIds = new Set(items.map((item) => item.productId.toString()));
