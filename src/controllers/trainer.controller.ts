@@ -45,14 +45,29 @@ const listTrainers = asyncHandler(async (_req: RequestWithUser, res: Response): 
 const listPublicTrainers = asyncHandler(async (_req: RequestWithUser, res: Response): Promise<void> => {
   const trainers = await Trainer.find({ isSuspended: false })
     .populate('userId', 'firstName lastName email phone bio profilePicture isActive')
-    .sort({ isFeatured: -1, createdAt: -1 });
+    .sort({ isFeatured: -1, createdAt: -1 })
+    .lean();
 
   const activeTrainers = trainers.filter((trainer) => {
     const user = trainer.userId as unknown as { isActive?: boolean } | null;
     return user?.isActive !== false;
   });
 
-  return sendSuccess(res, 'Public trainers fetched successfully', { trainers: activeTrainers }, HTTP_STATUS.OK) as any;
+  // Aggregate ratings from completed bookings
+  const trainerIds = activeTrainers.map((t) => t._id);
+  const ratingAggs = await Booking.aggregate([
+    { $match: { trainerId: { $in: trainerIds }, clientRating: { $exists: true, $ne: null } } },
+    { $group: { _id: '$trainerId', averageRating: { $avg: '$clientRating' }, ratingCount: { $sum: 1 } } },
+  ]);
+  const ratingMap = new Map(ratingAggs.map((r) => [r._id.toString(), r]));
+
+  const trainersWithRatings = activeTrainers.map((t) => ({
+    ...t,
+    averageRating: parseFloat((ratingMap.get(t._id.toString())?.averageRating ?? 0).toFixed(1)),
+    ratingCount: ratingMap.get(t._id.toString())?.ratingCount ?? 0,
+  }));
+
+  return sendSuccess(res, 'Public trainers fetched successfully', { trainers: trainersWithRatings }, HTTP_STATUS.OK) as any;
 });
 
 const getPublicTrainer = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
