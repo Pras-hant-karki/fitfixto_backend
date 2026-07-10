@@ -96,10 +96,6 @@ const applyVoucher = asyncHandler(async (req: RequestWithUser, res: Response): P
   // ensure non-negative discount and not more than subtotal
   discount = Math.max(0, Math.min(discount, subtotal));
 
-  // increment usage count (optimistic)
-  voucher.usedCount = (voucher.usedCount || 0) + 1;
-  await voucher.save();
-
   const newTotal = Math.round((subtotal - discount) * 100) / 100;
 
   return sendSuccess(

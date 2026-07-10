@@ -428,12 +428,15 @@ const listMyTrainerCalendarAvailability = asyncHandler(async (req: RequestWithUs
 const saveMyTrainerCalendarAvailability = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
   const trainer = await getCurrentTrainer(req);
   const body = req.body as TrainerCalendarAvailabilityRequest;
-  const start = new Date();
-  start.setUTCHours(0, 0, 0, 0);
-  const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 3, 1));
+  const now = new Date();
+  // Allow any date within the 3 calendar months shown on the UI (from the 1st of the
+  // current month, not from today — weekly slot toggling can produce earlier dates in
+  // the current month when today is not the 1st).
+  const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 3, 1));
   const dates = Array.from(new Set(body.dates)).map((value) => new Date(`${value}T00:00:00.000Z`));
 
-  if (dates.some((date) => Number.isNaN(date.getTime()) || date < start || date >= end)) {
+  if (dates.some((date) => Number.isNaN(date.getTime()) || date < startOfMonth || date >= end)) {
     throw new AppError('Availability dates must be within the current three-month calendar', HTTP_STATUS.BAD_REQUEST);
   }
 

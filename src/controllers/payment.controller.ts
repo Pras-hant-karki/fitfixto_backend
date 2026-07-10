@@ -34,6 +34,10 @@ export const confirmCodPayment = asyncHandler(async (req: RequestWithUser, res: 
     throw new AppError('Order payment already processed', HTTP_STATUS.BAD_REQUEST);
   }
 
+  if ((order as any).paymentMethod !== 'cash_on_delivery') {
+    throw new AppError('This order does not use cash on delivery', HTTP_STATUS.BAD_REQUEST);
+  }
+
   order.paymentStatus = PaymentStatus.COMPLETED;
   await order.save();
 

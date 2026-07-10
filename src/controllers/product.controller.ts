@@ -68,14 +68,15 @@ const listProducts = asyncHandler(async (req: RequestWithUser, res: Response): P
   const filter: Record<string, unknown> = {};
 
   if (search) {
+    const safeSearch = escapeRegExp(search);
     filter.$or = [
-      { name: { $regex: search, $options: 'i' } },
-      { description: { $regex: search, $options: 'i' } },
-      { brand: { $regex: search, $options: 'i' } },
-      { category: { $regex: search, $options: 'i' } },
-      { subcategory: { $regex: search, $options: 'i' } },
-      { sku: { $regex: search, $options: 'i' } },
-      { tags: { $in: [new RegExp(search, 'i')] } },
+      { name: { $regex: safeSearch, $options: 'i' } },
+      { description: { $regex: safeSearch, $options: 'i' } },
+      { brand: { $regex: safeSearch, $options: 'i' } },
+      { category: { $regex: safeSearch, $options: 'i' } },
+      { subcategory: { $regex: safeSearch, $options: 'i' } },
+      { sku: { $regex: safeSearch, $options: 'i' } },
+      { tags: { $in: [new RegExp(safeSearch, 'i')] } },
     ];
   }
 

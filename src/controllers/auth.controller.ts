@@ -307,18 +307,14 @@ const forgotPassword = asyncHandler(
 
     const user = await User.findOne({ email });
 
-    if (!user) {
-      throw new AppError(
-        'No user found with this email address',
-        HTTP_STATUS.NOT_FOUND
-      );
-    }
-
-    if (user.role === 'admin') {
-      throw new AppError(
-        'Admin password reset is disabled. Reset admin passwords directly from the database.',
-        HTTP_STATUS.FORBIDDEN
-      );
+    // Always return the same generic response to prevent user enumeration
+    if (!user || user.role === 'admin') {
+      return sendSuccess(
+        res,
+        'If an account with that email exists, a password reset link has been sent.',
+        {},
+        HTTP_STATUS.OK
+      ) as any;
     }
 
     const resetToken = user.generatePasswordResetToken();
@@ -339,8 +335,8 @@ const forgotPassword = asyncHandler(
 
     return sendSuccess(
       res,
-      'Password reset email sent successfully',
-      { email },
+      'If an account with that email exists, a password reset link has been sent.',
+      {},
       HTTP_STATUS.OK
     ) as any;
   }

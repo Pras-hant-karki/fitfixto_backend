@@ -27,7 +27,7 @@ export const registerSchema = z
     password: passwordSchema,
     confirmPassword: z.string(),
     role: z
-      .enum([UserRole.CUSTOMER, UserRole.TRAINER])
+      .enum([UserRole.CUSTOMER])
       .default(UserRole.CUSTOMER),
   })
   .strict()
