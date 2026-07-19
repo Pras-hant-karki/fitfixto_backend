@@ -6,8 +6,8 @@ import { AppError } from './appError';
 
 const generateAccessToken = (payload: Omit<JwtPayload, 'iat' | 'exp'>): string => {
   try {
-    const token = jwt.sign(payload, env.JWT_SECRET as string, {
-      expiresIn: env.JWT_EXPIRY,
+    const token = jwt.sign(payload, env.ACCESS_TOKEN_SECRET as string, {
+      expiresIn: env.ACCESS_TOKEN_EXPIRY,
       algorithm: 'HS256',
     } as jwt.SignOptions);
     return token;
@@ -21,8 +21,8 @@ const generateRefreshToken = (userId: string): string => {
     const payload: Omit<JwtPayload, 'email' | 'role'> & { userId: string } = {
       userId,
     };
-    const token = jwt.sign(payload, env.JWT_REFRESH_SECRET as string, {
-      expiresIn: env.JWT_REFRESH_EXPIRY,
+    const token = jwt.sign(payload, env.REFRESH_TOKEN_SECRET as string, {
+      expiresIn: env.REFRESH_TOKEN_EXPIRY,
       algorithm: 'HS256',
     } as jwt.SignOptions);
     return token;
@@ -50,7 +50,7 @@ const generateTokenPair = (
 
 const verifyAccessToken = (token: string): JwtPayload => {
   try {
-    const decoded = jwt.verify(token, env.JWT_SECRET as string, {
+    const decoded = jwt.verify(token, env.ACCESS_TOKEN_SECRET as string, {
       algorithms: ['HS256'],
     } as VerifyOptions) as JwtPayloadType & JwtPayload;
     return decoded;
@@ -67,7 +67,7 @@ const verifyAccessToken = (token: string): JwtPayload => {
 
 const verifyRefreshToken = (token: string): { userId: string } => {
   try {
-    const decoded = jwt.verify(token, env.JWT_REFRESH_SECRET as string, {
+    const decoded = jwt.verify(token, env.REFRESH_TOKEN_SECRET as string, {
       algorithms: ['HS256'],
     } as VerifyOptions) as JwtPayloadType & { userId: string };
 

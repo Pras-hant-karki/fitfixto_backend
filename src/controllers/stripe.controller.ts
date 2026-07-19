@@ -111,6 +111,129 @@ export const createPaymentIntent = asyncHandler(async (req: RequestWithUser, res
   }, HTTP_STATUS.OK) as any;
 });
 
+/**
+ * Create Stripe Checkout Session (redirect-to-Stripe flow)
+ * POST /api/v1/payments/stripe/checkout
+ * Returns { url } — frontend redirects to this URL to complete payment on Stripe's hosted page.
+ */
+export const createCheckoutSession = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  if (!req.user) throw new AppError('Not authenticated', HTTP_STATUS.UNAUTHORIZED);
+
+  const { deliveryAddressId, shippingMethod = 'standard', selectedProductIds, voucherCode } = req.body as {
+    deliveryAddressId: string;
+    shippingMethod?: 'standard' | 'express' | 'overnight';
+    selectedProductIds?: string[];
+    voucherCode?: string;
+  };
+
+  const shippingAmount = SHIPPING_AMOUNTS[shippingMethod] ?? 0;
+  const selectedProductIdSet = new Set(selectedProductIds ?? []);
+
+  const [address, cart] = await Promise.all([
+    DeliveryAddress.findOne({ _id: deliveryAddressId, userId: req.user._id }),
+    Cart.findOne({ userId: req.user._id }).populate('items.productId'),
+  ]);
+
+  if (!address) throw new AppError('Delivery address not found', HTTP_STATUS.NOT_FOUND);
+  if (!cart || cart.items.length === 0) throw new AppError('Cart is empty', HTTP_STATUS.BAD_REQUEST);
+
+  const selectedItems = selectedProductIdSet.size
+    ? cart.items.filter((item) => selectedProductIdSet.has(item.productId._id.toString()))
+    : cart.items;
+
+  if (selectedItems.length === 0) throw new AppError('Selected cart items not found', HTTP_STATUS.BAD_REQUEST);
+
+  const subtotal = roundMoney(
+    selectedItems.reduce((sum, item) => sum + getProductMrp(item.productId as unknown as CartProduct) * item.quantity, 0)
+  );
+  const productDiscountAmount = roundMoney(
+    selectedItems.reduce((sum, item) => {
+      const p = item.productId as unknown as CartProduct;
+      return sum + Math.max(0, getProductMrp(p) - p.price) * item.quantity;
+    }, 0)
+  );
+
+  let voucherDiscountAmount = 0;
+  if (voucherCode) {
+    const voucher = await Voucher.findOne({ code: voucherCode.toUpperCase(), active: true });
+    if (!voucher) throw new AppError('Invalid voucher code', HTTP_STATUS.BAD_REQUEST);
+    if (voucher.expiresAt && new Date() > voucher.expiresAt) throw new AppError('Voucher expired', HTTP_STATUS.BAD_REQUEST);
+    if (voucher.usageLimit && voucher.usedCount >= voucher.usageLimit) throw new AppError('Voucher usage limit reached', HTTP_STATUS.BAD_REQUEST);
+    if (voucher.minOrderValue && subtotal < voucher.minOrderValue) throw new AppError('Order does not meet minimum voucher value', HTTP_STATUS.BAD_REQUEST);
+    if (voucher.type === 'percentage') {
+      voucherDiscountAmount = Math.round(((voucher.amount ?? 0) * (subtotal - productDiscountAmount)) / 100 * 100) / 100;
+    } else if (voucher.type === 'fixed') {
+      voucherDiscountAmount = Math.min(voucher.amount ?? 0, subtotal - productDiscountAmount);
+    }
+  }
+
+  const discountAmount = roundMoney(productDiscountAmount + Math.max(0, Math.min(voucherDiscountAmount, subtotal - productDiscountAmount)));
+  const taxAmount = roundMoney(subtotal * CART_TAX_RATE);
+  const totalAmount = roundMoney(Math.max(0, subtotal - discountAmount) + shippingAmount + taxAmount);
+
+  const totalPaisa = Math.round(totalAmount * 100);
+  if (totalPaisa < 1000) throw new AppError('Order total is below the minimum charge amount (NPR 10)', HTTP_STATUS.BAD_REQUEST);
+
+  const stripe = getStripeClient();
+
+  // Build line items from cart
+  const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = selectedItems.map((item) => {
+    const product = item.productId as unknown as CartProduct;
+    return {
+      price_data: {
+        currency: 'npr',
+        product_data: { name: product.name },
+        unit_amount: Math.round(product.price * 100),
+      },
+      quantity: item.quantity,
+    };
+  });
+
+  // Add tax as a line item so total matches
+  if (taxAmount > 0) {
+    lineItems.push({
+      price_data: {
+        currency: 'npr',
+        product_data: { name: 'Tax (2%)' },
+        unit_amount: Math.round(taxAmount * 100),
+      },
+      quantity: 1,
+    });
+  }
+
+  // Add shipping if applicable
+  if (shippingAmount > 0) {
+    lineItems.push({
+      price_data: {
+        currency: 'npr',
+        product_data: { name: `Shipping — ${shippingMethod}` },
+        unit_amount: Math.round(shippingAmount * 100),
+      },
+      quantity: 1,
+    });
+  }
+
+  const session = await stripe.checkout.sessions.create({
+    payment_method_types: ['card'],
+    line_items: lineItems,
+    mode: 'payment',
+    customer_email: req.user.email,
+    success_url: `${env.FRONTEND_URL}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${env.FRONTEND_URL}/payment/cancel`,
+    metadata: {
+      userId: req.user._id.toString(),
+      deliveryAddressId,
+      shippingMethod,
+      voucherCode: voucherCode ?? '',
+    },
+  });
+
+  return sendSuccess(res, 'Checkout session created', {
+    url: session.url,
+    sessionId: session.id,
+  }, HTTP_STATUS.OK) as any;
+});
+
 export const stripeWebhook = asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const sig = req.headers['stripe-signature'] as string | undefined;
   if (!sig || !env.STRIPE_WEBHOOK_SECRET) {
@@ -137,6 +260,20 @@ export const stripeWebhook = asyncHandler(async (req: Request, res: Response): P
     const pi = event.data.object as Stripe.PaymentIntent;
     await Order.findOneAndUpdate(
       { stripePaymentIntentId: pi.id },
+      { paymentStatus: PaymentStatus.FAILED }
+    );
+  } else if (event.type === 'checkout.session.completed') {
+    const session = event.data.object as Stripe.Checkout.Session;
+    if (session.payment_status === 'paid') {
+      await Order.findOneAndUpdate(
+        { stripeSessionId: session.id },
+        { paymentStatus: PaymentStatus.COMPLETED, paidAt: new Date() }
+      );
+    }
+  } else if (event.type === 'checkout.session.expired') {
+    const session = event.data.object as Stripe.Checkout.Session;
+    await Order.findOneAndUpdate(
+      { stripeSessionId: session.id },
       { paymentStatus: PaymentStatus.FAILED }
     );
   }

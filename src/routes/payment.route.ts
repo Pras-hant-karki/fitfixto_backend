@@ -6,7 +6,7 @@ import {
   initiateKhaltiPayment,
   verifyKhaltiPayment,
 } from '../controllers/payment.controller';
-import { createPaymentIntent } from '../controllers/stripe.controller';
+import { createPaymentIntent, createCheckoutSession } from '../controllers/stripe.controller';
 import { authenticate } from '../middlewares/auth';
 import { validateBody } from '../middlewares/validation';
 import {
@@ -32,5 +32,8 @@ router.post('/khalti/verify', authenticate, validateBody(verifyKhaltiPaymentSche
 
 // Stripe card payment — intent creation (webhook is mounted in app.ts before express.json())
 router.post('/stripe/intent', authenticate, createPaymentIntent);
+
+// Stripe Checkout Session — redirects user to Stripe-hosted payment page
+router.post('/stripe/checkout', authenticate, createCheckoutSession);
 
 export default router;
