@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import healthRouter from './health.route';
+import cronRouter from './cron.route';
 import adminRouter from './admin.route';
 import authRouter from './auth.route';
 import deliveryAddressRouter from './deliveryAddress.route';
@@ -21,6 +22,7 @@ import discountRouter from './discount.route';
 const apiRouter = Router();
 
 apiRouter.use('/health', healthRouter);
+apiRouter.use('/cron', cronRouter);
 apiRouter.use('/admin', adminRouter);
 apiRouter.use('/auth', authRouter);
 apiRouter.use('/delivery-addresses', deliveryAddressRouter);

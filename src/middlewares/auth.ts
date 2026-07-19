@@ -25,6 +25,10 @@ export const authenticate: RequestHandler = async (req: RequestWithUser, _res: R
       throw new AppError('User not found', HTTP_STATUS.UNAUTHORIZED);
     }
 
+    if (!user.isActive) {
+      throw new AppError('Your account has been suspended. Please contact support.', HTTP_STATUS.FORBIDDEN);
+    }
+
     req.user = user;
     return next();
   } catch (error) {

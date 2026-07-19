@@ -1,4 +1,5 @@
 import Stripe from 'stripe';
+import PDFDocument from 'pdfkit';
 import { Request, Response } from 'express';
 import { Types } from 'mongoose';
 import { asyncHandler } from '../utils/asyncHandler';
@@ -552,8 +553,27 @@ const updateOrderStatus = asyncHandler(async (req: RequestWithUser, res: Respons
   return sendSuccess(res, `Order status updated to ${status}`, response, HTTP_STATUS.OK) as any;
 });
 
-const updatePaymentStatus = asyncHandler(async (_req: Request, res: Response): Promise<void> => {
-  return sendSuccess(res, 'Not implemented', { message: 'Use payment integration later' }, HTTP_STATUS.OK) as any;
+const updatePaymentStatus = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  if (!req.user) throw new AppError('Not authenticated', HTTP_STATUS.UNAUTHORIZED);
+
+  const { orderId } = req.params;
+  const { paymentStatus } = req.body as { paymentStatus?: string };
+
+  const allowedStatuses = Object.values(PaymentStatus);
+  if (!paymentStatus || !allowedStatuses.includes(paymentStatus as PaymentStatus)) {
+    throw new AppError(`paymentStatus must be one of: ${allowedStatuses.join(', ')}`, HTTP_STATUS.BAD_REQUEST);
+  }
+
+  const order = await Order.findById(orderId);
+  if (!order) throw new AppError('Order not found', HTTP_STATUS.NOT_FOUND);
+
+  order.paymentStatus = paymentStatus as PaymentStatus;
+  if (paymentStatus === PaymentStatus.COMPLETED && !order.paidAt) {
+    order.paidAt = new Date();
+  }
+  await order.save();
+
+  return sendSuccess(res, 'Payment status updated', { order }, HTTP_STATUS.OK) as any;
 });
 
 const downloadInvoice = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
@@ -568,36 +588,113 @@ const downloadInvoice = asyncHandler(async (req: RequestWithUser, res: Response)
     throw new AppError('Order not found', HTTP_STATUS.NOT_FOUND);
   }
 
-  // Mock invoice data placeholder
-  const invoice = {
-    invoiceNumber: `INV-${order._id.toString().substring(0, 8).toUpperCase()}-${order.createdAt.getFullYear()}`,
-    invoiceDate: order.createdAt,
-    orderId: order._id,
-    orderDate: order.createdAt,
-    status: order.status,
-    paymentStatus: order.paymentStatus,
-    items: order.items.map((item) => ({
-      productId: item.productId,
-      productName: item.productName,
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      lineTotal: item.lineTotal,
-    })),
-    subtotal: order.subtotal,
-    discountAmount: order.discountAmount,
-    discountCode: order.voucherCode ?? null,
-    totalAmount: order.totalAmount,
-    deliveryAddress: order.deliveryAddressId,
-    paymentMethod: order.paymentMethod,
-    transactionId: order.transactionId ?? null,
-    notes: order.notes ?? null,
-    generatedAt: new Date(),
+  const invoiceNumber = `INV-${order._id.toString().substring(0, 8).toUpperCase()}-${order.createdAt.getFullYear()}`;
+  const address = order.deliveryAddressId as unknown as {
+    recipientName?: string; street?: string; city?: string; state?: string; postalCode?: string; country?: string;
+  } | null;
+
+  const fmt = (n: number) => `NPR ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const dateStr = order.createdAt.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+  const doc = new PDFDocument({ margin: 50, size: 'A4' });
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="invoice-${invoiceNumber}.pdf"`);
+  doc.pipe(res);
+
+  // ---- Header ----------------------------------------------------------------
+  doc.fontSize(24).font('Helvetica-Bold').text('FitFIXto', 50, 50);
+  doc.fontSize(10).font('Helvetica').fillColor('#666666')
+    .text('Fitness & Wellness Marketplace', 50, 78)
+    .text('support@fitfixto.com', 50, 90);
+
+  doc.fontSize(22).font('Helvetica-Bold').fillColor('#111111')
+    .text('INVOICE', 400, 50, { align: 'right' });
+  doc.fontSize(10).font('Helvetica').fillColor('#444444')
+    .text(`Invoice #: ${invoiceNumber}`, 400, 78, { align: 'right' })
+    .text(`Date: ${dateStr}`, 400, 90, { align: 'right' })
+    .text(`Order #: ${order._id.toString().substring(0, 12).toUpperCase()}`, 400, 102, { align: 'right' });
+
+  doc.moveTo(50, 120).lineTo(545, 120).strokeColor('#e5e7eb').stroke();
+
+  // ---- Status badges ---------------------------------------------------------
+  const payStatusColor = order.paymentStatus === 'completed' ? '#15803d' : order.paymentStatus === 'failed' ? '#dc2626' : '#d97706';
+  doc.roundedRect(50, 132, 100, 20, 4).fill(payStatusColor);
+  doc.fontSize(9).font('Helvetica-Bold').fillColor('#ffffff')
+    .text(`Payment: ${order.paymentStatus.toUpperCase()}`, 52, 137, { width: 96, align: 'center' });
+
+  const orderStatusColor = order.status === 'delivered' ? '#15803d' : order.status === 'cancelled' ? '#dc2626' : '#2563eb';
+  doc.roundedRect(160, 132, 100, 20, 4).fill(orderStatusColor);
+  doc.fontSize(9).font('Helvetica-Bold').fillColor('#ffffff')
+    .text(`Order: ${order.status.toUpperCase()}`, 162, 137, { width: 96, align: 'center' });
+
+  // ---- Bill to ---------------------------------------------------------------
+  doc.fontSize(11).font('Helvetica-Bold').fillColor('#111111').text('Bill To:', 50, 168);
+  doc.fontSize(10).font('Helvetica').fillColor('#444444');
+  if (address?.recipientName) doc.text(address.recipientName, 50, 182);
+  if (address?.street) doc.text(address.street, 50, doc.y);
+  if (address?.city) doc.text(`${address.city}${address.state ? ', ' + address.state : ''}${address.postalCode ? ' ' + address.postalCode : ''}`, 50, doc.y);
+  if (address?.country) doc.text(address.country, 50, doc.y);
+
+  // ---- Payment info ----------------------------------------------------------
+  doc.fontSize(11).font('Helvetica-Bold').fillColor('#111111').text('Payment Method:', 350, 168);
+  doc.fontSize(10).font('Helvetica').fillColor('#444444')
+    .text(order.paymentMethod.replace(/_/g, ' ').toUpperCase(), 350, 182);
+  if (order.paidAt) {
+    doc.text(`Paid: ${order.paidAt.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}`, 350, doc.y);
+  }
+
+  // ---- Items table -----------------------------------------------------------
+  const tableTop = Math.max(doc.y, 260) + 16;
+  doc.rect(50, tableTop, 495, 22).fill('#f3f4f6');
+  doc.fontSize(10).font('Helvetica-Bold').fillColor('#111111')
+    .text('Item', 58, tableTop + 6)
+    .text('Qty', 350, tableTop + 6, { width: 50, align: 'center' })
+    .text('Unit Price', 400, tableTop + 6, { width: 75, align: 'right' })
+    .text('Total', 475, tableTop + 6, { width: 65, align: 'right' });
+
+  let rowY = tableTop + 26;
+  doc.font('Helvetica').fillColor('#333333');
+
+  for (const item of order.items) {
+    if (rowY > 700) { doc.addPage(); rowY = 50; }
+    doc.fontSize(10)
+      .text(item.productName, 58, rowY, { width: 280 })
+      .text(String(item.quantity), 350, rowY, { width: 50, align: 'center' })
+      .text(fmt(item.unitPrice), 400, rowY, { width: 75, align: 'right' })
+      .text(fmt(item.lineTotal), 475, rowY, { width: 65, align: 'right' });
+    rowY += 20;
+    doc.moveTo(50, rowY - 2).lineTo(545, rowY - 2).strokeColor('#f3f4f6').stroke();
+  }
+
+  // ---- Totals ----------------------------------------------------------------
+  rowY += 10;
+  doc.moveTo(350, rowY).lineTo(545, rowY).strokeColor('#e5e7eb').stroke();
+  rowY += 8;
+
+  const addTotalRow = (label: string, value: string, bold = false) => {
+    doc.fontSize(10)
+      .font(bold ? 'Helvetica-Bold' : 'Helvetica')
+      .fillColor(bold ? '#111111' : '#444444')
+      .text(label, 350, rowY, { width: 125, align: 'right' })
+      .text(value, 475, rowY, { width: 65, align: 'right' });
+    rowY += 18;
   };
 
-  // TODO: Integrate PDF generation library (e.g., pdfkit, puppeteer) to generate actual PDF file
-  // For now, return invoice data as JSON placeholder
+  addTotalRow('Subtotal:', fmt(order.subtotal));
+  if (order.discountAmount > 0) addTotalRow(`Discount${order.voucherCode ? ` (${order.voucherCode})` : ''}:`, `-${fmt(order.discountAmount)}`);
+  if (order.shippingAmount > 0) addTotalRow(`Shipping (${order.shippingMethod || 'standard'}):`, fmt(order.shippingAmount));
+  addTotalRow('Tax (2%):', fmt(order.taxAmount));
+  doc.moveTo(350, rowY).lineTo(545, rowY).strokeColor('#111111').stroke();
+  rowY += 6;
+  addTotalRow('TOTAL:', fmt(order.totalAmount), true);
 
-  return sendSuccess(res, 'Invoice generated', { invoice }, HTTP_STATUS.OK) as any;
+  // ---- Footer ----------------------------------------------------------------
+  doc.fontSize(9).font('Helvetica').fillColor('#9ca3af')
+    .text('Thank you for shopping with FitFIXto!', 50, 760, { align: 'center', width: 495 })
+    .text(`Generated on ${new Date().toLocaleString('en-US')}`, 50, 772, { align: 'center', width: 495 });
+
+  doc.end();
 });
 
 export { placeOrder, getOrder, getAdminOrder, getMyOrders, getAllOrders, cancelOrder, trackOrder, updateOrderStatus, updatePaymentStatus, downloadInvoice };

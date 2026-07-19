@@ -132,6 +132,10 @@ const login = asyncHandler(async (req: Request, res: Response): Promise<void> =>
     throw new AppError('Invalid email or password', HTTP_STATUS.UNAUTHORIZED);
   }
 
+  if (!user.isActive) {
+    throw new AppError('Your account has been suspended. Please contact support.', HTTP_STATUS.FORBIDDEN);
+  }
+
   const { accessToken, refreshToken } = generateTokenPair(
     user._id.toString(),
     user.email,
@@ -185,6 +189,10 @@ const adminLogin = asyncHandler(async (req: Request, res: Response): Promise<voi
 
   if (!isPasswordValid) {
     throw new AppError('Invalid admin credentials', HTTP_STATUS.UNAUTHORIZED);
+  }
+
+  if (!user.isActive) {
+    throw new AppError('This account has been suspended.', HTTP_STATUS.FORBIDDEN);
   }
 
   const { accessToken, refreshToken } = generateTokenPair(
@@ -263,10 +271,11 @@ const verifyEmail = asyncHandler(async (req: Request, res: Response): Promise<vo
 
   const user = await User.findOne({ email }).select('+emailVerificationToken +emailVerificationExpires');
 
+  // Generic error — do not reveal whether the email exists
   if (!user) {
     throw new AppError(
-      'User not found',
-      HTTP_STATUS.NOT_FOUND
+      'Invalid or expired verification token',
+      HTTP_STATUS.UNAUTHORIZED
     );
   }
 
