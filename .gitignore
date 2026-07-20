@@ -36,6 +36,7 @@ yarn-error.log*
 uploads/
 public/assets/
 temp/
+REVIEW.md
 
 # OS
 Thumbs.db

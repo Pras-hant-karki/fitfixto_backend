@@ -4,7 +4,7 @@ import { sendSuccess } from '../utils/apiResponse';
 import { HTTP_STATUS } from '../constants/app.constants';
 import { AppError } from '../utils/appError';
 import { RequestWithUser } from '../middlewares/auth';
-import Booking from '../models/Booking';
+import Booking, { BookingStatus } from '../models/Booking';
 import Trainer from '../models/Trainer';
 import TrainerAvailability from '../models/TrainerAvailability';
 import { CreateBookingRequest, UpdateBookingStatusRequest } from '../validations/booking.validation';
@@ -24,8 +24,9 @@ const createBooking = asyncHandler(async (req: RequestWithUser, res: Response): 
   }
 
   const slotDate = new Date(`${body.slotDate}T00:00:00.000Z`);
-  if (Number.isNaN(slotDate.getTime()) || slotDate < new Date(new Date().toISOString().slice(0, 10))) {
-    throw new AppError('Please select a valid future booking date', HTTP_STATUS.BAD_REQUEST);
+  const todayUtc = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z');
+  if (Number.isNaN(slotDate.getTime()) || slotDate <= todayUtc) {
+    throw new AppError('Booking date must be at least one day in the future', HTTP_STATUS.BAD_REQUEST);
   }
 
   const dayKeys = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
@@ -100,18 +101,33 @@ const getMyTrainerBookings = asyncHandler(async (req: RequestWithUser, res: Resp
   return sendSuccess(res, 'Trainer bookings fetched successfully', { bookings }, HTTP_STATUS.OK) as any;
 });
 
+const BOOKING_TRANSITIONS: Record<BookingStatus, BookingStatus[]> = {
+  pending:   ['confirmed', 'cancelled'],
+  confirmed: ['completed', 'cancelled'],
+  cancelled: [],
+  completed: [],
+};
+
 const updateBookingStatus = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
   const trainer = await getTrainerByUserId(req.user?._id);
   const { bookingId } = req.params;
   const body = req.body as UpdateBookingStatusRequest;
 
-  const booking = await Booking.findOneAndUpdate(
-    { _id: bookingId, trainerId: trainer._id },
-    { status: body.status, ...(body.trainerNotes !== undefined && { trainerNotes: body.trainerNotes }) },
-    { new: true, runValidators: true }
-  ).populate('clientId', 'firstName lastName email phone profilePicture');
-
+  const booking = await Booking.findOne({ _id: bookingId, trainerId: trainer._id });
   if (!booking) throw new AppError('Booking not found', HTTP_STATUS.NOT_FOUND);
+
+  const allowed = BOOKING_TRANSITIONS[booking.status];
+  if (!allowed.includes(body.status as BookingStatus)) {
+    throw new AppError(
+      `Cannot change booking status from '${booking.status}' to '${body.status}'`,
+      HTTP_STATUS.BAD_REQUEST
+    );
+  }
+
+  booking.status = body.status as BookingStatus;
+  if (body.trainerNotes !== undefined) booking.trainerNotes = body.trainerNotes;
+  await booking.save();
+  await booking.populate('clientId', 'firstName lastName email phone profilePicture');
 
   return sendSuccess(res, 'Booking updated successfully', { booking }, HTTP_STATUS.OK) as any;
 });
@@ -210,12 +226,48 @@ const submitClientReview = asyncHandler(async (req: RequestWithUser, res: Respon
   return sendSuccess(res, 'Review submitted successfully', { booking }, HTTP_STATUS.OK) as any;
 });
 
-const getAllBookingsAdmin = asyncHandler(async (_req: RequestWithUser, res: Response): Promise<void> => {
-  const bookings = await Booking.find()
-    .populate({ path: 'trainerId', populate: { path: 'userId', select: 'firstName lastName email profilePicture' } })
-    .populate('clientId', 'firstName lastName email')
-    .sort({ createdAt: -1 });
-  return sendSuccess(res, 'All bookings', { bookings }, HTTP_STATUS.OK) as any;
+const getAllBookingsAdmin = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const { page, limit, search, status } = req.query as { page?: string; limit?: string; search?: string; status?: string };
+  const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit || '20', 10) || 20));
+  const skip = (pageNum - 1) * limitNum;
+
+  const filter: Record<string, unknown> = {};
+  if (status && status !== 'all') {
+    filter.status = status;
+  }
+  if (search?.trim()) {
+    const safeSearch = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(safeSearch, 'i');
+    filter.$or = [{ contactName: regex }, { contactEmail: regex }, { timeLabel: regex }];
+  }
+
+  const [bookings, total] = await Promise.all([
+    Booking.find(filter)
+      .populate({ path: 'trainerId', populate: { path: 'userId', select: 'firstName lastName email profilePicture' } })
+      .populate('clientId', 'firstName lastName email')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum),
+    Booking.countDocuments(filter),
+  ]);
+
+  return sendSuccess(
+    res,
+    'All bookings',
+    {
+      bookings,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
+        hasNextPage: pageNum * limitNum < total,
+        hasPrevPage: pageNum > 1,
+      },
+    },
+    HTTP_STATUS.OK
+  ) as any;
 });
 
 export {

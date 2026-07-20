@@ -9,6 +9,8 @@ import Order from '../models/Order';
 import Trainer from '../models/Trainer';
 import { UserRole } from '../types/index';
 
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 type AnalyticsRange = 'today' | 'weekly' | 'monthly' | 'quarterly' | 'half-yearly' | 'yearly';
 
 const rangeConfig: Record<AnalyticsRange, { days: number; buckets: number; label: string }> = {
@@ -75,43 +77,63 @@ const buildBuckets = (range: AnalyticsRange) => {
   });
 };
 
-const listUsers = asyncHandler(async (_req: RequestWithUser, res: Response): Promise<void> => {
-  const [users, orderStats] = await Promise.all([
-    User.find().sort({ createdAt: -1 }),
-    Order.aggregate([
-      {
-        $group: {
-          _id: '$userId',
-          ordersCount: { $sum: 1 },
-          totalSpent: { $sum: '$totalAmount' },
-        },
-      },
-    ]),
+const listUsers = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const { page, limit, search } = req.query as { page?: string; limit?: string; search?: string };
+  const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit || '20', 10) || 20));
+  const skip = (pageNum - 1) * limitNum;
+
+  const filter: Record<string, unknown> = {};
+  if (search?.trim()) {
+    const regex = new RegExp(escapeRegExp(search.trim()), 'i');
+    filter.$or = [
+      { firstName: regex },
+      { lastName: regex },
+      { email: regex },
+      { phone: regex },
+    ];
+  }
+
+  const [users, total] = await Promise.all([
+    User.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum),
+    User.countDocuments(filter),
+  ]);
+
+  const userIds = users.map((u) => u._id);
+  const orderStats = await Order.aggregate([
+    { $match: { userId: { $in: userIds } } },
+    { $group: { _id: '$userId', ordersCount: { $sum: 1 }, totalSpent: { $sum: '$totalAmount' } } },
   ]);
 
   const statsByUserId = new Map(
     orderStats.map((stat) => [
       stat._id.toString(),
-      {
-        ordersCount: stat.ordersCount,
-        totalSpent: Math.round((stat.totalSpent || 0) * 100) / 100,
-      },
+      { ordersCount: stat.ordersCount, totalSpent: Math.round((stat.totalSpent || 0) * 100) / 100 },
     ])
   );
 
   const usersWithStats = users.map((user) => {
     const userObject = user.toObject();
     const stats = statsByUserId.get(user._id.toString()) || { ordersCount: 0, totalSpent: 0 };
-
-    return {
-      ...userObject,
-      password: undefined,
-      ordersCount: stats.ordersCount,
-      totalSpent: stats.totalSpent,
-    };
+    return { ...userObject, password: undefined, ordersCount: stats.ordersCount, totalSpent: stats.totalSpent };
   });
 
-  return sendSuccess(res, 'Users fetched successfully', { users: usersWithStats }, HTTP_STATUS.OK) as any;
+  return sendSuccess(
+    res,
+    'Users fetched successfully',
+    {
+      users: usersWithStats,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
+        hasNextPage: pageNum * limitNum < total,
+        hasPrevPage: pageNum > 1,
+      },
+    },
+    HTTP_STATUS.OK
+  ) as any;
 });
 
 const updateUserStatus = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {

@@ -14,6 +14,17 @@ export const passwordSchema = z
   .min(6, 'Password must be at least 6 characters')
   .max(100);
 
+// Enforced on new passwords (register, reset, change).
+// Login keeps the lenient schema so existing users are never locked out.
+export const strongPasswordSchema = z
+  .string()
+  .min(12, 'Password must be at least 12 characters')
+  .max(100)
+  .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+  .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
+  .regex(/[0-9]/, 'Password must contain at least one number')
+  .regex(/[^A-Za-z0-9]/, 'Password must contain at least one special character');
+
 export const tokenSchema = z.string().min(1, 'Token is required');
 
 const profilePictureSchema = z.string().url('Invalid profile picture URL');
@@ -24,7 +35,7 @@ export const registerSchema = z
     lastName: nameSchema.min(2, 'Last name must be at least 2 characters'),
     email: emailSchema,
     phone: phoneSchema,
-    password: passwordSchema,
+    password: strongPasswordSchema,
     confirmPassword: z.string(),
     role: z
       .enum([UserRole.CUSTOMER])
@@ -75,7 +86,7 @@ export type ForgotPasswordRequest = z.infer<typeof forgotPasswordSchema>;
 export const resetPasswordSchema = z
   .object({
     token: tokenSchema,
-    password: passwordSchema,
+    password: strongPasswordSchema,
     confirmPassword: z.string(),
   })
   .strict()
@@ -89,10 +100,7 @@ export type ResetPasswordRequest = z.infer<typeof resetPasswordSchema>;
 export const changePasswordSchema = z
   .object({
     currentPassword: passwordSchema,
-    newPassword: z
-      .string()
-      .min(6, 'New password must be at least 6 characters')
-      .max(100),
+    newPassword: strongPasswordSchema,
     confirmPassword: z.string(),
   })
   .strict()

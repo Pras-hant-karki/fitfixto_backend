@@ -455,7 +455,10 @@ const cancelOrder = asyncHandler(async (req: RequestWithUser, res: Response): Pr
   }
 
   order.status = OrderStatus.CANCELLED;
-  order.paymentStatus = PaymentStatus.REFUNDED;
+  // Only mark refunded when payment was actually collected; COD/unpaid orders had no payment to refund
+  if (order.paymentStatus === PaymentStatus.COMPLETED) {
+    order.paymentStatus = PaymentStatus.REFUNDED;
+  }
   order.cancellationReason = reason;
   order.cancelledAt = new Date();
   await order.save();

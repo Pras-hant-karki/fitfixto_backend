@@ -14,6 +14,7 @@ import {
   resetPasswordSchema,
   changePasswordSchema,
   updateProfileSchema,
+  strongPasswordSchema,
 } from '../validations/auth.validation';
 import User, { IUser } from '../models/User';
 import { RequestWithUser } from '../middlewares/auth';
@@ -151,6 +152,8 @@ const login = asyncHandler(async (req: Request, res: Response): Promise<void> =>
     role: user.role,
   };
 
+  const passwordIsWeak = !strongPasswordSchema.safeParse(password).success;
+
   return sendSuccess(
     res,
     'Login successful',
@@ -160,6 +163,7 @@ const login = asyncHandler(async (req: Request, res: Response): Promise<void> =>
         accessToken,
         refreshToken,
       },
+      passwordIsWeak,
     },
     HTTP_STATUS.OK
   ) as any;

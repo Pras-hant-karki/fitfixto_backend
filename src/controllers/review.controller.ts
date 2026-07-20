@@ -8,6 +8,9 @@ import { RequestWithUser } from '../middlewares/auth';
 import Order from '../models/Order';
 import Product from '../models/Product';
 import Review from '../models/Review';
+import User from '../models/User';
+
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 import { OrderStatus, UserRole } from '../types/index';
 import {
   AdminReviewListQueryRequest,
@@ -228,25 +231,35 @@ const listAdminReviews = asyncHandler(async (req: RequestWithUser, res: Response
     order = 'desc',
   } = req.query as unknown as AdminReviewListQueryRequest;
 
-  const filter: Record<string, unknown> = {};
+  const conditions: Record<string, unknown>[] = [];
 
-  if (productId) {
-    filter.productId = productId;
-  }
-
-  if (userId) {
-    filter.userId = userId;
-  }
+  if (productId) conditions.push({ productId });
+  if (userId) conditions.push({ userId });
 
   if (status === 'approved') {
-    filter.isActive = true;
-    filter.$or = [{ moderationStatus: 'approved' }, { moderationStatus: { $exists: false } }];
+    conditions.push({
+      isActive: true,
+      $or: [{ moderationStatus: 'approved' }, { moderationStatus: { $exists: false } }],
+    });
+  } else if (status === 'removed') {
+    conditions.push({ $or: [{ isActive: false }, { moderationStatus: 'removed' }] });
   }
 
-  if (status === 'removed') {
-    filter.$or = [{ isActive: false }, { moderationStatus: 'removed' }];
+  if (search?.trim()) {
+    const regex = new RegExp(escapeRegExp(search.trim()), 'i');
+    const [matchingUsers, matchingProducts] = await Promise.all([
+      User.find({ $or: [{ firstName: regex }, { lastName: regex }, { email: regex }] }).select('_id'),
+      Product.find({ $or: [{ name: regex }, { brand: regex }, { category: regex }] }).select('_id'),
+    ]);
+
+    const orParts: Record<string, unknown>[] = [{ title: regex }, { comment: regex }];
+    if (matchingUsers.length) orParts.push({ userId: { $in: matchingUsers.map((u) => u._id) } });
+    if (matchingProducts.length) orParts.push({ productId: { $in: matchingProducts.map((p) => p._id) } });
+
+    conditions.push({ $or: orParts });
   }
 
+  const filter = conditions.length > 0 ? { $and: conditions } : {};
   const skip = (page - 1) * limit;
   const sortDirection = order === 'asc' ? 1 : -1;
 
@@ -261,40 +274,17 @@ const listAdminReviews = asyncHandler(async (req: RequestWithUser, res: Response
     Review.countDocuments(filter),
   ]);
 
-  const normalizedSearch = search?.trim().toLowerCase();
-  const filteredReviews = normalizedSearch
-    ? reviews.filter((review) => {
-        const product = review.productId as unknown as { name?: string; brand?: string; category?: string };
-        const user = review.userId as unknown as { firstName?: string; lastName?: string; email?: string };
-        const haystack = [
-          product?.name,
-          product?.brand,
-          product?.category,
-          user?.firstName,
-          user?.lastName,
-          user?.email,
-          review.title,
-          review.comment,
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase();
-
-        return haystack.includes(normalizedSearch);
-      })
-    : reviews;
-
   return sendSuccess(
     res,
     'Admin reviews fetched successfully',
     {
-      reviews: filteredReviews,
+      reviews,
       pagination: {
-        total: normalizedSearch ? filteredReviews.length : total,
+        total,
         page,
         limit,
-        totalPages: Math.ceil((normalizedSearch ? filteredReviews.length : total) / limit),
-        hasNextPage: normalizedSearch ? false : page * limit < total,
+        totalPages: Math.ceil(total / limit),
+        hasNextPage: page * limit < total,
         hasPrevPage: page > 1,
       },
     },

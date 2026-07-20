@@ -34,12 +34,37 @@ const buildTrainerPayload = (body: CreateTrainerRequest | UpdateTrainerRequest) 
   isSuspended: body.isSuspended,
 });
 
-const listTrainers = asyncHandler(async (_req: RequestWithUser, res: Response): Promise<void> => {
-  const trainers = await Trainer.find()
-    .populate('userId', 'firstName lastName email phone bio profilePicture isActive')
-    .sort({ createdAt: -1 });
+const listTrainers = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const { page, limit } = req.query as { page?: string; limit?: string };
+  const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit || '20', 10) || 20));
+  const skip = (pageNum - 1) * limitNum;
 
-  return sendSuccess(res, 'Trainers fetched successfully', { trainers }, HTTP_STATUS.OK) as any;
+  const [trainers, total] = await Promise.all([
+    Trainer.find()
+      .populate('userId', 'firstName lastName email phone bio profilePicture isActive')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum),
+    Trainer.countDocuments(),
+  ]);
+
+  return sendSuccess(
+    res,
+    'Trainers fetched successfully',
+    {
+      trainers,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
+        hasNextPage: pageNum * limitNum < total,
+        hasPrevPage: pageNum > 1,
+      },
+    },
+    HTTP_STATUS.OK
+  ) as any;
 });
 
 const listPublicTrainers = asyncHandler(async (_req: RequestWithUser, res: Response): Promise<void> => {
@@ -205,10 +230,38 @@ const createTrainerApplication = asyncHandler(async (req: RequestWithUser, res: 
   return sendSuccess(res, 'Trainer application submitted successfully', { application }, HTTP_STATUS.CREATED) as any;
 });
 
-const listTrainerApplications = asyncHandler(async (_req: RequestWithUser, res: Response): Promise<void> => {
-  const applications = await TrainerApplication.find().sort({ createdAt: -1 });
+const listTrainerApplications = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const { page, limit, status } = req.query as { page?: string; limit?: string; status?: string };
+  const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit || '50', 10) || 50));
+  const skip = (pageNum - 1) * limitNum;
 
-  return sendSuccess(res, 'Trainer applications fetched successfully', { applications }, HTTP_STATUS.OK) as any;
+  const filter: Record<string, unknown> = {};
+  if (status && ['pending', 'approved', 'rejected'].includes(status)) {
+    filter.status = status;
+  }
+
+  const [applications, total] = await Promise.all([
+    TrainerApplication.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum),
+    TrainerApplication.countDocuments(filter),
+  ]);
+
+  return sendSuccess(
+    res,
+    'Trainer applications fetched successfully',
+    {
+      applications,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
+        hasNextPage: pageNum * limitNum < total,
+        hasPrevPage: pageNum > 1,
+      },
+    },
+    HTTP_STATUS.OK
+  ) as any;
 });
 
 const approveTrainerApplication = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
