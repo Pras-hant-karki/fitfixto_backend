@@ -109,12 +109,18 @@ const BOOKING_TRANSITIONS: Record<BookingStatus, BookingStatus[]> = {
 };
 
 const updateBookingStatus = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
-  const trainer = await getTrainerByUserId(req.user?._id);
   const { bookingId } = req.params;
   const body = req.body as UpdateBookingStatusRequest;
 
-  const booking = await Booking.findOne({ _id: bookingId, trainerId: trainer._id });
-  if (!booking) throw new AppError('Booking not found', HTTP_STATUS.NOT_FOUND);
+  let booking;
+  if (req.user?.role === 'admin') {
+    booking = await Booking.findById(bookingId);
+    if (!booking) throw new AppError('Booking not found', HTTP_STATUS.NOT_FOUND);
+  } else {
+    const trainer = await getTrainerByUserId(req.user?._id);
+    booking = await Booking.findOne({ _id: bookingId, trainerId: trainer._id });
+    if (!booking) throw new AppError('Booking not found', HTTP_STATUS.NOT_FOUND);
+  }
 
   const allowed = BOOKING_TRANSITIONS[booking.status];
   if (!allowed.includes(body.status as BookingStatus)) {

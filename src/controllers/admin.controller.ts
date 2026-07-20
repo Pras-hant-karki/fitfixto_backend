@@ -181,9 +181,10 @@ const getAnalytics = asyncHandler(async (req: RequestWithUser, res: Response): P
   const range: AnalyticsRange = requestedRange in rangeConfig ? requestedRange : 'yearly';
   const startDate = getRangeStart(range);
 
-  const [orders, trainers] = await Promise.all([
+  const [orders, trainers, customerCount] = await Promise.all([
     Order.find({ createdAt: { $gte: startDate }, paymentStatus: 'completed', status: { $nin: ['cancelled', 'returned'] } }).sort({ createdAt: 1 }),
     Trainer.find({ isSuspended: false }).populate('userId', 'firstName lastName profilePicture'),
+    User.countDocuments({ role: UserRole.CUSTOMER }),
   ]);
 
   const buckets = buildBuckets(range);
@@ -236,6 +237,7 @@ const getAnalytics = asyncHandler(async (req: RequestWithUser, res: Response): P
     orders: orders.length,
     averageOrderValue: orders.length ? Math.round((orders.reduce((sum, order) => sum + order.totalAmount, 0) / orders.length) * 100) / 100 : 0,
     productsSold: Array.from(productTotals.values()).reduce((sum, product) => sum + product.sold, 0),
+    customerCount,
   };
 
   return sendSuccess(

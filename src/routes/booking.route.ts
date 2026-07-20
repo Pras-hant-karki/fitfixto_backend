@@ -28,7 +28,7 @@ router.get('/trainer/clients', authenticate, authorize(UserRole.TRAINER), getMyC
 router.patch(
   '/:bookingId/status',
   authenticate,
-  authorize(UserRole.TRAINER),
+  authorize(UserRole.TRAINER, UserRole.ADMIN),
   validateParams(bookingIdParamSchema),
   validateBody(updateBookingStatusSchema),
   updateBookingStatus
