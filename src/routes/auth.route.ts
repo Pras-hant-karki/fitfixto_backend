@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   register,
   login,
+  refreshToken,
   logout,
   getCurrentUser,
   verifyEmail,
@@ -24,6 +25,7 @@ const authRouter = Router();
 
 authRouter.post('/register', authRegisterRateLimiter, register);
 authRouter.post('/login', authLoginRateLimiter, login);
+authRouter.post('/refresh', authSensitiveRateLimiter, refreshToken);
 authRouter.post('/logout', authenticate, logout);
 authRouter.get('/me', authenticate, getCurrentUser);
 authRouter.put('/profile', authenticate, updateProfile);

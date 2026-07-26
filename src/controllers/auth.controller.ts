@@ -4,7 +4,7 @@ import { HTTP_STATUS } from '../constants/app.constants';
 import { AppError } from '../utils/appError';
 import { sendSuccess, sendError } from '../utils/apiResponse';
 import { asyncHandler } from '../utils/asyncHandler';
-import { generateTokenPair } from '../utils/jwt';
+import { generateTokenPair, verifyRefreshToken } from '../utils/jwt';
 import env from '../config/env';
 import {
   registerSchema,
@@ -220,6 +220,59 @@ const adminLogin = asyncHandler(async (req: Request, res: Response): Promise<voi
       tokens: {
         accessToken,
         refreshToken,
+      },
+    },
+    HTTP_STATUS.OK
+  ) as any;
+});
+
+const refreshToken = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  const { refreshToken: token } = req.body;
+
+  if (!token) {
+    throw new AppError('Refresh token is required', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  // Throws 401 AppError if expired or invalid
+  const { userId } = verifyRefreshToken(token);
+
+  const user = await User.findById(userId);
+
+  if (!user) {
+    throw new AppError('User not found', HTTP_STATUS.UNAUTHORIZED);
+  }
+
+  if (!user.isActive) {
+    throw new AppError('Your account has been suspended.', HTTP_STATUS.FORBIDDEN);
+  }
+
+  const { accessToken, refreshToken: newRefreshToken } = generateTokenPair(
+    user._id.toString(),
+    user.email,
+    user.role
+  );
+
+  return sendSuccess(
+    res,
+    'Token refreshed successfully',
+    {
+      user: {
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        profilePicture: user.profilePicture,
+        bio: user.bio,
+        isEmailVerified: user.isEmailVerified,
+        isActive: user.isActive,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      },
+      tokens: {
+        accessToken,
+        refreshToken: newRefreshToken,
       },
     },
     HTTP_STATUS.OK
@@ -567,4 +620,4 @@ const uploadProfileImage = asyncHandler(
   }
 );
 
-export { register, login, adminLogin, logout, getCurrentUser, verifyEmail, forgotPassword, resetPassword, changePassword, updateProfile, uploadProfileImage };
+export { register, login, adminLogin, refreshToken, logout, getCurrentUser, verifyEmail, forgotPassword, resetPassword, changePassword, updateProfile, uploadProfileImage };
