@@ -182,7 +182,15 @@ const getAnalytics = asyncHandler(async (req: RequestWithUser, res: Response): P
   const startDate = getRangeStart(range);
 
   const [orders, trainers, customerCount] = await Promise.all([
-    Order.find({ createdAt: { $gte: startDate }, paymentStatus: 'completed', status: { $nin: ['cancelled', 'returned'] } }).sort({ createdAt: 1 }),
+    Order.find({
+      createdAt: { $gte: startDate },
+      $or: [
+        { status: 'delivered' },
+        { paymentStatus: 'completed' },
+      ],
+      status: { $ne: 'returned' },
+      paymentStatus: { $ne: 'refunded' },
+    }).sort({ createdAt: 1 }),
     Trainer.find({ isSuspended: false }).populate('userId', 'firstName lastName profilePicture'),
     User.countDocuments({ role: UserRole.CUSTOMER }),
   ]);
