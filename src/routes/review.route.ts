@@ -9,10 +9,13 @@ import {
   moderateReview,
   listFeaturedReviews,
   featureReview,
+  featureBookingReview,
+  moderateBookingReview,
 } from '../controllers/review.controller';
 import { validateBody, validateParams, validateQuery } from '../middlewares/validation';
 import {
   adminReviewListQuerySchema,
+  bookingReviewKindParamSchema,
   createReviewSchema,
   reviewFeatureSchema,
   reviewIdParamSchema,
@@ -46,6 +49,25 @@ router.patch(
   validateBody(reviewFeatureSchema),
   featureReview
 );
+// Trainer-session and service reviews are stored on their booking documents, so they get
+// their own moderation routes. Registered before /:reviewId so the literal prefix wins.
+router.patch(
+  '/admin/booking/:kind/:bookingId/feature',
+  authenticate,
+  authorize(UserRole.ADMIN),
+  validateParams(bookingReviewKindParamSchema),
+  validateBody(reviewFeatureSchema),
+  featureBookingReview
+);
+router.patch(
+  '/admin/booking/:kind/:bookingId/moderation',
+  authenticate,
+  authorize(UserRole.ADMIN),
+  validateParams(bookingReviewKindParamSchema),
+  validateBody(reviewModerationSchema),
+  moderateBookingReview
+);
+
 router.put('/:reviewId', authenticate, validateParams(reviewIdParamSchema), validateBody(updateReviewSchema), updateReview);
 router.delete('/:reviewId', authenticate, validateParams(reviewIdParamSchema), deleteReview);
 

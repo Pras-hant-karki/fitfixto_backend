@@ -13,7 +13,7 @@ const errorHandler = (
   const isDevelopment = process.env.NODE_ENV === 'development';
 
   if (err instanceof AppError) {
-    sendError(res, err.message, err.statusCode, isDevelopment ? err.stack : undefined);
+    sendError(res, err.message, err.statusCode, isDevelopment ? err.stack : undefined, err.code);
     return;
   }
 

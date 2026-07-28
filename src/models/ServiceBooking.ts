@@ -16,6 +16,9 @@ export interface IServiceBooking extends Document {
   adminNotes?: string;
   clientRating?: number;
   clientComment?: string;
+  /** Admin moderation of the client's service review, mirroring the product Review model. */
+  reviewIsFeatured: boolean;
+  reviewModerationStatus: 'approved' | 'removed';
   createdAt: Date;
   updatedAt: Date;
 }
@@ -38,6 +41,8 @@ const serviceBookingSchema = new Schema<IServiceBooking>(
     adminNotes: { type: String, trim: true, maxlength: 500 },
     clientRating: { type: Number, min: 1, max: 5 },
     clientComment: { type: String, trim: true, maxlength: 500 },
+    reviewIsFeatured: { type: Boolean, default: false, index: true },
+    reviewModerationStatus: { type: String, enum: ['approved', 'removed'], default: 'approved', index: true },
   },
   { timestamps: true }
 );

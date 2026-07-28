@@ -117,6 +117,7 @@ export const updateProfileSchema = z
     lastName: nameSchema.optional(),
     phone: phoneSchema.optional(),
     bio: z.string().max(500, 'Bio must be at most 500 characters').optional(),
+    address: z.string().max(255, 'Address must be at most 255 characters').optional(),
     profilePicture: profilePictureSchema.optional(),
   })
   .strict();

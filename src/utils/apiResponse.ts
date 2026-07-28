@@ -5,6 +5,7 @@ interface ApiResponseOptions<T> {
   message: string;
   data?: T;
   error?: unknown;
+  code?: string;
 }
 
 export const sendResponse = <T>(
@@ -17,6 +18,7 @@ export const sendResponse = <T>(
     message: options.message,
     data: options.data,
     error: options.error,
+    ...(options.code ? { code: options.code } : {}),
   });
 };
 
@@ -37,11 +39,13 @@ export const sendError = (
   res: Response,
   message: string,
   statusCode: number = 500,
-  error?: unknown
+  error?: unknown,
+  code?: string
 ): Response => {
   return sendResponse(res, statusCode, {
     success: false,
     message,
     error,
+    code,
   });
 };

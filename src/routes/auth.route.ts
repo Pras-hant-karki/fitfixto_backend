@@ -5,6 +5,7 @@ import {
   refreshToken,
   logout,
   getCurrentUser,
+  getSession,
   verifyEmail,
   forgotPassword,
   resetPassword,
@@ -28,6 +29,8 @@ authRouter.post('/login', authLoginRateLimiter, login);
 authRouter.post('/refresh', authSensitiveRateLimiter, refreshToken);
 authRouter.post('/logout', authenticate, logout);
 authRouter.get('/me', authenticate, getCurrentUser);
+// Single source of truth for "is this access token valid, and what role does it grant?"
+authRouter.get('/session', authenticate, getSession);
 authRouter.put('/profile', authenticate, updateProfile);
 authRouter.post('/profile/upload-image', authenticate, uploadProfileImageMiddleware.single('profileImage'), uploadProfileImage);
 authRouter.post('/verify-email', authSensitiveRateLimiter, verifyEmail);
