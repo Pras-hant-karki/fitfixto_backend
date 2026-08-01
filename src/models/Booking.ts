@@ -22,6 +22,11 @@ export interface IBooking extends Document {
   status: BookingStatus;
   notes?: string;
   trainerNotes?: string;
+  clientRating?: number;
+  clientComment?: string;
+  /** Admin moderation of the client's session review, mirroring the product Review model. */
+  reviewIsFeatured: boolean;
+  reviewModerationStatus: 'approved' | 'removed';
   createdAt: Date;
   updatedAt: Date;
 }
@@ -74,6 +79,10 @@ const bookingSchema = new Schema<IBooking>(
       trim: true,
       maxlength: [500, 'Trainer notes must be at most 500 characters'],
     },
+    clientRating: { type: Number, min: 1, max: 5 },
+    clientComment: { type: String, trim: true, maxlength: 500 },
+    reviewIsFeatured: { type: Boolean, default: false, index: true },
+    reviewModerationStatus: { type: String, enum: ['approved', 'removed'], default: 'approved', index: true },
   },
   { timestamps: true }
 );

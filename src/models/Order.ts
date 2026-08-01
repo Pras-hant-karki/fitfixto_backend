@@ -26,6 +26,9 @@ export interface IOrder extends Document {
   totalAmount: number;
   notes?: string;
   transactionId?: string;
+  stripePaymentIntentId?: string;
+  stripeSessionId?: string;
+  paidAt?: Date;
   cancellationReason?: string;
   cancelledAt?: Date;
   estimatedDeliveryDate?: Date;
@@ -141,6 +144,19 @@ const orderSchema = new Schema<IOrder>(
       type: String,
       sparse: true,
       index: true,
+    },
+    stripePaymentIntentId: {
+      type: String,
+      sparse: true,
+      index: true,
+    },
+    stripeSessionId: {
+      type: String,
+      sparse: true,
+      index: true,
+    },
+    paidAt: {
+      type: Date,
     },
     cancellationReason: {
       type: String,

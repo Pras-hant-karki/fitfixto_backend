@@ -250,7 +250,7 @@ const seedProducts = async () => {
 
 const runSeed = async () => {
   try {
-    await mongoose.connect(env.MONGODB_URI, {
+    await mongoose.connect(env.MONGODB_URL, {
       autoIndex: env.NODE_ENV !== 'production',
       serverSelectionTimeoutMS: 10000,
     });

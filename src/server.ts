@@ -3,6 +3,16 @@ import app from './app';
 import env from './config/env';
 import { connectDB, disconnectDB } from './config/database';
 
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled promise rejection:', reason);
+  process.exit(1);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception:', err);
+  process.exit(1);
+});
+
 let server: Server | null = null;
 
 export const startServer = async (): Promise<void> => {

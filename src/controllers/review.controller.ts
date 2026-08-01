@@ -5,9 +5,14 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { HTTP_STATUS } from '../constants/app.constants';
 import { AppError } from '../utils/appError';
 import { RequestWithUser } from '../middlewares/auth';
+import Booking from '../models/Booking';
 import Order from '../models/Order';
 import Product from '../models/Product';
 import Review from '../models/Review';
+import ServiceBooking from '../models/ServiceBooking';
+import User from '../models/User';
+
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 import { OrderStatus, UserRole } from '../types/index';
 import {
   AdminReviewListQueryRequest,
@@ -228,25 +233,35 @@ const listAdminReviews = asyncHandler(async (req: RequestWithUser, res: Response
     order = 'desc',
   } = req.query as unknown as AdminReviewListQueryRequest;
 
-  const filter: Record<string, unknown> = {};
+  const conditions: Record<string, unknown>[] = [];
 
-  if (productId) {
-    filter.productId = productId;
-  }
-
-  if (userId) {
-    filter.userId = userId;
-  }
+  if (productId) conditions.push({ productId });
+  if (userId) conditions.push({ userId });
 
   if (status === 'approved') {
-    filter.isActive = true;
-    filter.$or = [{ moderationStatus: 'approved' }, { moderationStatus: { $exists: false } }];
+    conditions.push({
+      isActive: true,
+      $or: [{ moderationStatus: 'approved' }, { moderationStatus: { $exists: false } }],
+    });
+  } else if (status === 'removed') {
+    conditions.push({ $or: [{ isActive: false }, { moderationStatus: 'removed' }] });
   }
 
-  if (status === 'removed') {
-    filter.$or = [{ isActive: false }, { moderationStatus: 'removed' }];
+  if (search?.trim()) {
+    const regex = new RegExp(escapeRegExp(search.trim()), 'i');
+    const [matchingUsers, matchingProducts] = await Promise.all([
+      User.find({ $or: [{ firstName: regex }, { lastName: regex }, { email: regex }] }).select('_id'),
+      Product.find({ $or: [{ name: regex }, { brand: regex }, { category: regex }] }).select('_id'),
+    ]);
+
+    const orParts: Record<string, unknown>[] = [{ title: regex }, { comment: regex }];
+    if (matchingUsers.length) orParts.push({ userId: { $in: matchingUsers.map((u) => u._id) } });
+    if (matchingProducts.length) orParts.push({ productId: { $in: matchingProducts.map((p) => p._id) } });
+
+    conditions.push({ $or: orParts });
   }
 
+  const filter = conditions.length > 0 ? { $and: conditions } : {};
   const skip = (page - 1) * limit;
   const sortDirection = order === 'asc' ? 1 : -1;
 
@@ -261,40 +276,17 @@ const listAdminReviews = asyncHandler(async (req: RequestWithUser, res: Response
     Review.countDocuments(filter),
   ]);
 
-  const normalizedSearch = search?.trim().toLowerCase();
-  const filteredReviews = normalizedSearch
-    ? reviews.filter((review) => {
-        const product = review.productId as unknown as { name?: string; brand?: string; category?: string };
-        const user = review.userId as unknown as { firstName?: string; lastName?: string; email?: string };
-        const haystack = [
-          product?.name,
-          product?.brand,
-          product?.category,
-          user?.firstName,
-          user?.lastName,
-          user?.email,
-          review.title,
-          review.comment,
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase();
-
-        return haystack.includes(normalizedSearch);
-      })
-    : reviews;
-
   return sendSuccess(
     res,
     'Admin reviews fetched successfully',
     {
-      reviews: filteredReviews,
+      reviews,
       pagination: {
-        total: normalizedSearch ? filteredReviews.length : total,
+        total,
         page,
         limit,
-        totalPages: Math.ceil((normalizedSearch ? filteredReviews.length : total) / limit),
-        hasNextPage: normalizedSearch ? false : page * limit < total,
+        totalPages: Math.ceil(total / limit),
+        hasNextPage: page * limit < total,
         hasPrevPage: page > 1,
       },
     },
@@ -330,16 +322,81 @@ const moderateReview = asyncHandler(async (req: RequestWithUser, res: Response):
   ) as any;
 });
 
+/**
+ * Homepage testimonials, drawn from all three review sources.
+ *
+ * Product reviews are their own collection, while trainer-session and service reviews are
+ * fields on their booking documents. They are normalised into one shape here so the homepage
+ * can render them uniformly.
+ */
 const listFeaturedReviews = asyncHandler(async (_req, res: Response): Promise<void> => {
-  const reviews = await Review.find({
-    isFeatured: true,
-    isActive: true,
-    moderationStatus: 'approved',
-  })
-    .populate('userId', 'firstName lastName')
-    .populate('productId', 'name')
-    .sort({ updatedAt: -1 })
-    .limit(10);
+  const [productReviews, trainerBookings, serviceBookings] = await Promise.all([
+    Review.find({ isFeatured: true, isActive: true, moderationStatus: 'approved' })
+      .populate('userId', 'firstName lastName profilePicture')
+      .populate('productId', 'name')
+      .sort({ updatedAt: -1 })
+      .limit(10),
+    Booking.find({ reviewIsFeatured: true, reviewModerationStatus: 'approved', clientRating: { $gte: 1 } })
+      .populate('clientId', 'firstName lastName profilePicture')
+      .populate({ path: 'trainerId', select: 'userId', populate: { path: 'userId', select: 'firstName lastName' } })
+      .sort({ updatedAt: -1 })
+      .limit(10),
+    ServiceBooking.find({ reviewIsFeatured: true, reviewModerationStatus: 'approved', clientRating: { $gte: 1 } })
+      .populate('clientId', 'firstName lastName profilePicture')
+      .populate('serviceId', 'name')
+      .sort({ updatedAt: -1 })
+      .limit(10),
+  ]);
+
+  const normalisedProduct = productReviews.map((review) => {
+    const author = review.userId as unknown as { firstName?: string; lastName?: string; profilePicture?: string };
+    const product = review.productId as unknown as { name?: string };
+    return {
+      id: review._id,
+      kind: 'product' as const,
+      rating: review.rating,
+      comment: review.comment || review.title || '',
+      subject: product?.name || 'Product',
+      authorName: `${author?.firstName ?? ''} ${author?.lastName ?? ''}`.trim(),
+      authorPicture: author?.profilePicture || null,
+      updatedAt: review.updatedAt,
+    };
+  });
+
+  const normalisedTrainer = trainerBookings.map((booking) => {
+    const author = booking.clientId as unknown as { firstName?: string; lastName?: string; profilePicture?: string };
+    const trainer = booking.trainerId as unknown as { userId?: { firstName?: string; lastName?: string } };
+    const trainerName = `${trainer?.userId?.firstName ?? ''} ${trainer?.userId?.lastName ?? ''}`.trim();
+    return {
+      id: booking._id,
+      kind: 'trainer' as const,
+      rating: booking.clientRating ?? 0,
+      comment: booking.clientComment || '',
+      subject: trainerName || 'Trainer session',
+      authorName: `${author?.firstName ?? ''} ${author?.lastName ?? ''}`.trim(),
+      authorPicture: author?.profilePicture || null,
+      updatedAt: booking.updatedAt,
+    };
+  });
+
+  const normalisedService = serviceBookings.map((booking) => {
+    const author = booking.clientId as unknown as { firstName?: string; lastName?: string; profilePicture?: string };
+    const service = booking.serviceId as unknown as { name?: string };
+    return {
+      id: booking._id,
+      kind: 'service' as const,
+      rating: booking.clientRating ?? 0,
+      comment: booking.clientComment || '',
+      subject: service?.name || 'Service',
+      authorName: `${author?.firstName ?? ''} ${author?.lastName ?? ''}`.trim(),
+      authorPicture: author?.profilePicture || null,
+      updatedAt: booking.updatedAt,
+    };
+  });
+
+  const reviews = [...normalisedProduct, ...normalisedTrainer, ...normalisedService]
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    .slice(0, 12);
 
   return sendSuccess(res, 'Featured reviews fetched successfully', { reviews }, HTTP_STATUS.OK) as any;
 });
@@ -367,4 +424,75 @@ const featureReview = asyncHandler(async (req: RequestWithUser, res: Response): 
   ) as any;
 });
 
-export { createReview, updateReview, deleteReview, listReviews, listMyReviews, listAdminReviews, moderateReview, listFeaturedReviews, featureReview };
+/**
+ * Trainer-session and service reviews live on their booking documents rather than in the
+ * Review collection, so they need their own moderation handlers. Behaviour matches
+ * featureReview/moderateReview so the admin console can treat all three review kinds alike.
+ */
+// Booking and ServiceBooking are separate models with the same review fields. Selecting
+// between them inline keeps each branch's document type concrete for the compiler.
+const findBookingReview = async (kind: 'trainer' | 'service', bookingId: string) =>
+  kind === 'trainer' ? Booking.findById(bookingId) : ServiceBooking.findById(bookingId);
+
+const featureBookingReview = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const { kind, bookingId } = req.params as { kind: 'trainer' | 'service'; bookingId: string };
+  const { isFeatured } = req.body as ReviewFeatureRequest;
+
+  const booking = await findBookingReview(kind, bookingId);
+
+  if (!booking) throw new AppError('Review not found', HTTP_STATUS.NOT_FOUND);
+
+  if (!booking.clientRating) {
+    throw new AppError('This booking has no review to feature', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  booking.reviewIsFeatured = isFeatured;
+  await booking.save();
+
+  return sendSuccess(
+    res,
+    isFeatured ? 'Review featured on homepage' : 'Review removed from homepage',
+    { id: booking._id, kind, isFeatured: booking.reviewIsFeatured },
+    HTTP_STATUS.OK
+  ) as any;
+});
+
+const moderateBookingReview = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const { kind, bookingId } = req.params as { kind: 'trainer' | 'service'; bookingId: string };
+  const { status } = req.body as ReviewModerationRequest;
+
+  const booking = await findBookingReview(kind, bookingId);
+
+  if (!booking) throw new AppError('Review not found', HTTP_STATUS.NOT_FOUND);
+
+  booking.reviewModerationStatus = status;
+  // A removed review must not keep appearing on the homepage.
+  if (status === 'removed') booking.reviewIsFeatured = false;
+  await booking.save();
+
+  return sendSuccess(
+    res,
+    status === 'approved' ? 'Review approved successfully' : 'Review removed successfully',
+    {
+      id: booking._id,
+      kind,
+      moderationStatus: booking.reviewModerationStatus,
+      isFeatured: booking.reviewIsFeatured,
+    },
+    HTTP_STATUS.OK
+  ) as any;
+});
+
+export {
+  createReview,
+  updateReview,
+  deleteReview,
+  listReviews,
+  listMyReviews,
+  listAdminReviews,
+  moderateReview,
+  listFeaturedReviews,
+  featureReview,
+  featureBookingReview,
+  moderateBookingReview,
+};

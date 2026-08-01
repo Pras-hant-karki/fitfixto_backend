@@ -9,104 +9,153 @@ import Order from '../models/Order';
 import Trainer from '../models/Trainer';
 import { UserRole } from '../types/index';
 
-type AnalyticsRange = 'today' | 'weekly' | 'quarterly' | 'half-yearly' | 'yearly';
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-const rangeConfig: Record<AnalyticsRange, { days: number; buckets: number; label: string }> = {
-  today: { days: 1, buckets: 24, label: 'hour' },
-  weekly: { days: 7, buckets: 7, label: 'day' },
-  quarterly: { days: 90, buckets: 13, label: 'week' },
-  'half-yearly': { days: 182, buckets: 6, label: 'month' },
-  yearly: { days: 365, buckets: 12, label: 'month' },
+type AnalyticsRange = 'today' | 'weekly' | 'monthly' | 'quarterly' | 'half-yearly' | 'yearly';
+
+type BucketUnit = 'hour' | 'day' | 'week' | 'month';
+
+const rangeConfig: Record<AnalyticsRange, { unit: BucketUnit; buckets: number }> = {
+  today: { unit: 'hour', buckets: 24 },
+  weekly: { unit: 'day', buckets: 7 },
+  monthly: { unit: 'day', buckets: 30 },
+  quarterly: { unit: 'week', buckets: 13 },
+  'half-yearly': { unit: 'month', buckets: 6 },
+  yearly: { unit: 'month', buckets: 12 },
 };
 
-const getRangeStart = (range: AnalyticsRange) => {
-  const config = rangeConfig[range];
-  const start = new Date();
-  start.setDate(start.getDate() - config.days + 1);
-  start.setHours(0, 0, 0, 0);
-  return start;
+interface AnalyticsBucket {
+  label: string;
+  /** Inclusive lower bound. */
+  start: Date;
+  /** Exclusive upper bound. */
+  end: Date;
+  revenue: number;
+  orders: number;
+}
+
+const startOfDay = (date: Date) => {
+  const copy = new Date(date);
+  copy.setHours(0, 0, 0, 0);
+  return copy;
 };
 
-const getBucketKey = (date: Date, range: AnalyticsRange) => {
-  if (range === 'today') {
-    return `${date.getHours().toString().padStart(2, '0')}:00`;
-  }
+/** Month arithmetic that never overflows (adding a month to Jan 31 yields Feb 1, not Mar 3). */
+const startOfMonth = (date: Date, monthOffset = 0) =>
+  new Date(date.getFullYear(), date.getMonth() + monthOffset, 1, 0, 0, 0, 0);
 
-  if (range === 'weekly') {
-    return date.toLocaleDateString('en-US', { weekday: 'short' });
+const formatBucketLabel = (date: Date, unit: BucketUnit, range: AnalyticsRange) => {
+  if (unit === 'hour') return `${date.getHours().toString().padStart(2, '0')}:00`;
+  if (unit === 'week') return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  if (unit === 'month') {
+    // A 12-month window spans two calendar years, so the year keeps the labels unambiguous.
+    return range === 'yearly'
+      ? date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
+      : date.toLocaleDateString('en-US', { month: 'short' });
   }
-
-  if (range === 'quarterly') {
-    const start = getRangeStart(range);
-    const diffDays = Math.floor((date.getTime() - start.getTime()) / (24 * 60 * 60 * 1000));
-    return `W${Math.floor(diffDays / 7) + 1}`;
-  }
-
-  return date.toLocaleDateString('en-US', { month: 'short' });
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 
-const buildBuckets = (range: AnalyticsRange) => {
-  const config = rangeConfig[range];
-  const start = getRangeStart(range);
+/**
+ * Builds contiguous, half-open [start, end) buckets ending with the period that contains now.
+ *
+ * Buckets carry explicit boundaries rather than formatted labels because matching orders by
+ * label text silently dropped data: a six-month window labelled Jan–Jun excluded every order
+ * placed in the current month, and a twelve-month window collided the current month with the
+ * same month a year earlier.
+ */
+const buildBuckets = (range: AnalyticsRange): AnalyticsBucket[] => {
+  const { unit, buckets: count } = rangeConfig[range];
+  const now = new Date();
 
-  return Array.from({ length: config.buckets }, (_, index) => {
-    const date = new Date(start);
+  return Array.from({ length: count }, (_, index) => {
+    const stepsBack = count - 1 - index;
+    let start: Date;
+    let end: Date;
 
-    if (range === 'today') {
-      date.setHours(index, 0, 0, 0);
-    } else if (range === 'weekly') {
-      date.setDate(start.getDate() + index);
-    } else if (range === 'quarterly') {
-      date.setDate(start.getDate() + index * 7);
+    if (unit === 'hour') {
+      start = startOfDay(now);
+      start.setHours(index);
+      end = new Date(start);
+      end.setHours(start.getHours() + 1);
+    } else if (unit === 'day') {
+      start = startOfDay(now);
+      start.setDate(start.getDate() - stepsBack);
+      end = new Date(start);
+      end.setDate(start.getDate() + 1);
+    } else if (unit === 'week') {
+      start = startOfDay(now);
+      start.setDate(start.getDate() - stepsBack * 7);
+      end = new Date(start);
+      end.setDate(start.getDate() + 7);
     } else {
-      date.setMonth(start.getMonth() + index);
+      start = startOfMonth(now, -stepsBack);
+      end = startOfMonth(start, 1);
     }
 
-    return {
-      label: getBucketKey(date, range),
-      revenue: 0,
-      orders: 0,
-    };
+    return { label: formatBucketLabel(start, unit, range), start, end, revenue: 0, orders: 0 };
   });
 };
 
-const listUsers = asyncHandler(async (_req: RequestWithUser, res: Response): Promise<void> => {
-  const [users, orderStats] = await Promise.all([
-    User.find().sort({ createdAt: -1 }),
-    Order.aggregate([
-      {
-        $group: {
-          _id: '$userId',
-          ordersCount: { $sum: 1 },
-          totalSpent: { $sum: '$totalAmount' },
-        },
-      },
-    ]),
+const getRangeStart = (range: AnalyticsRange) => buildBuckets(range)[0].start;
+
+const listUsers = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const { page, limit, search } = req.query as { page?: string; limit?: string; search?: string };
+  const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit || '20', 10) || 20));
+  const skip = (pageNum - 1) * limitNum;
+
+  const filter: Record<string, unknown> = {};
+  if (search?.trim()) {
+    const regex = new RegExp(escapeRegExp(search.trim()), 'i');
+    filter.$or = [
+      { firstName: regex },
+      { lastName: regex },
+      { email: regex },
+      { phone: regex },
+    ];
+  }
+
+  const [users, total] = await Promise.all([
+    User.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum),
+    User.countDocuments(filter),
+  ]);
+
+  const userIds = users.map((u) => u._id);
+  const orderStats = await Order.aggregate([
+    { $match: { userId: { $in: userIds } } },
+    { $group: { _id: '$userId', ordersCount: { $sum: 1 }, totalSpent: { $sum: '$totalAmount' } } },
   ]);
 
   const statsByUserId = new Map(
     orderStats.map((stat) => [
       stat._id.toString(),
-      {
-        ordersCount: stat.ordersCount,
-        totalSpent: Math.round((stat.totalSpent || 0) * 100) / 100,
-      },
+      { ordersCount: stat.ordersCount, totalSpent: Math.round((stat.totalSpent || 0) * 100) / 100 },
     ])
   );
 
   const usersWithStats = users.map((user) => {
     const userObject = user.toObject();
     const stats = statsByUserId.get(user._id.toString()) || { ordersCount: 0, totalSpent: 0 };
-
-    return {
-      ...userObject,
-      password: undefined,
-      ordersCount: stats.ordersCount,
-      totalSpent: stats.totalSpent,
-    };
+    return { ...userObject, password: undefined, ordersCount: stats.ordersCount, totalSpent: stats.totalSpent };
   });
 
-  return sendSuccess(res, 'Users fetched successfully', { users: usersWithStats }, HTTP_STATUS.OK) as any;
+  return sendSuccess(
+    res,
+    'Users fetched successfully',
+    {
+      users: usersWithStats,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
+        hasNextPage: pageNum * limitNum < total,
+        hasPrevPage: pageNum > 1,
+      },
+    },
+    HTTP_STATUS.OK
+  ) as any;
 });
 
 const updateUserStatus = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
@@ -154,18 +203,30 @@ const getAnalytics = asyncHandler(async (req: RequestWithUser, res: Response): P
   const range: AnalyticsRange = requestedRange in rangeConfig ? requestedRange : 'yearly';
   const startDate = getRangeStart(range);
 
-  const [orders, trainers] = await Promise.all([
-    Order.find({ createdAt: { $gte: startDate } }).sort({ createdAt: 1 }),
+  const [orders, trainers, customerCount] = await Promise.all([
+    Order.find({
+      createdAt: { $gte: startDate },
+      $or: [
+        { status: 'delivered' },
+        { paymentStatus: 'completed' },
+      ],
+      status: { $ne: 'returned' },
+      paymentStatus: { $ne: 'refunded' },
+    }).sort({ createdAt: 1 }),
     Trainer.find({ isSuspended: false }).populate('userId', 'firstName lastName profilePicture'),
+    User.countDocuments({ role: UserRole.CUSTOMER }),
   ]);
 
   const buckets = buildBuckets(range);
-  const bucketMap = new Map(buckets.map((bucket) => [bucket.label, bucket]));
   const productTotals = new Map<string, { name: string; sold: number; revenue: number }>();
 
+  const findBucket = (date: Date) => {
+    const time = new Date(date).getTime();
+    return buckets.find((bucket) => time >= bucket.start.getTime() && time < bucket.end.getTime());
+  };
+
   orders.forEach((order) => {
-    const label = getBucketKey(order.createdAt, range);
-    const bucket = bucketMap.get(label);
+    const bucket = findBucket(order.createdAt);
 
     if (bucket) {
       bucket.revenue += order.totalAmount;
@@ -209,6 +270,7 @@ const getAnalytics = asyncHandler(async (req: RequestWithUser, res: Response): P
     orders: orders.length,
     averageOrderValue: orders.length ? Math.round((orders.reduce((sum, order) => sum + order.totalAmount, 0) / orders.length) * 100) / 100 : 0,
     productsSold: Array.from(productTotals.values()).reduce((sum, product) => sum + product.sold, 0),
+    customerCount,
   };
 
   return sendSuccess(
@@ -218,7 +280,8 @@ const getAnalytics = asyncHandler(async (req: RequestWithUser, res: Response): P
       range,
       summary,
       series: buckets.map((bucket) => ({
-        ...bucket,
+        label: bucket.label,
+        orders: bucket.orders,
         revenue: Math.round(bucket.revenue * 100) / 100,
       })),
       topProducts,

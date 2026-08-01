@@ -88,7 +88,7 @@ const uploadHomepageImage = asyncHandler(async (req: RequestWithUser, res: Respo
 
   const image = {
     filename: req.file.filename,
-    path: `/uploads/${req.file.filename}`,
+    path: `homepage/${req.file.filename}`,
     mimetype: req.file.mimetype,
   };
 

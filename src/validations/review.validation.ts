@@ -71,3 +71,21 @@ export const reviewFeatureSchema = z
   .strict();
 
 export type ReviewFeatureRequest = z.infer<typeof reviewFeatureSchema>;
+
+/** Identifies a trainer-session or service review, which live on their booking documents. */
+export const bookingReviewIdParamSchema = z
+  .object({
+    bookingId: z.string().min(1, 'Booking ID is required'),
+  })
+  .strict();
+
+export type BookingReviewIdParamRequest = z.infer<typeof bookingReviewIdParamSchema>;
+
+export const bookingReviewKindParamSchema = z
+  .object({
+    kind: z.enum(['trainer', 'service']),
+    bookingId: z.string().min(1, 'Booking ID is required'),
+  })
+  .strict();
+
+export type BookingReviewKindParamRequest = z.infer<typeof bookingReviewKindParamSchema>;

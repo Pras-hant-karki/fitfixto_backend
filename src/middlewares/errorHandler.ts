@@ -13,7 +13,7 @@ const errorHandler = (
   const isDevelopment = process.env.NODE_ENV === 'development';
 
   if (err instanceof AppError) {
-    sendError(res, err.message, err.statusCode, isDevelopment ? err.stack : undefined);
+    sendError(res, err.message, err.statusCode, isDevelopment ? err.stack : undefined, err.code);
     return;
   }
 
@@ -29,19 +29,24 @@ const errorHandler = (
     return;
   }
 
+  const castError = err as Error & { name?: string; path?: string };
+  if (castError.name === 'CastError') {
+    sendError(res, 'Invalid ID format', HTTP_STATUS.BAD_REQUEST, isDevelopment ? err.stack : undefined);
+    return;
+  }
+
   const databaseError = err as Error & {
     code?: number;
     keyPattern?: Record<string, number>;
   };
 
   if (databaseError.code === 11000) {
-    const field = Object.keys(databaseError.keyPattern || {})[0] || 'value';
-    sendError(
-      res,
-      `An account with this ${field} already exists. Please use a different ${field}.`,
-      HTTP_STATUS.CONFLICT,
-      isDevelopment ? err.stack : undefined
-    );
+    const fields = Object.keys(databaseError.keyPattern || {});
+    const message =
+      fields.length === 1 && fields[0]
+        ? `An account with this ${fields[0]} already exists. Please use a different ${fields[0]}.`
+        : 'This record already exists. Please try again with different values.';
+    sendError(res, message, HTTP_STATUS.CONFLICT, isDevelopment ? err.stack : undefined);
     return;
   }
 

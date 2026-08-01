@@ -6,15 +6,18 @@ import { AppError } from '../utils/appError';
 import { RequestWithUser } from '../middlewares/auth';
 import Trainer from '../models/Trainer';
 import TrainerAvailability from '../models/TrainerAvailability';
+import TrainerAvailableDate from '../models/TrainerAvailableDate';
 import TrainerApplication from '../models/TrainerApplication';
 import TrainerProgram from '../models/TrainerProgram';
 import User from '../models/User';
+import Booking from '../models/Booking';
 import { UserRole } from '../types/index';
 import { sendTrainerCredentialsEmail } from '../services/emailService';
 import {
   CreateTrainerRequest,
   TrainerApplicationRequest,
   TrainerAvailabilityRequest,
+  TrainerCalendarAvailabilityRequest,
   TrainerProgramRequest,
   UpdateTrainerAvailabilityRequest,
   UpdateTrainerProgramRequest,
@@ -31,25 +34,65 @@ const buildTrainerPayload = (body: CreateTrainerRequest | UpdateTrainerRequest) 
   isSuspended: body.isSuspended,
 });
 
-const listTrainers = asyncHandler(async (_req: RequestWithUser, res: Response): Promise<void> => {
-  const trainers = await Trainer.find()
-    .populate('userId', 'firstName lastName email phone bio profilePicture isActive')
-    .sort({ createdAt: -1 });
+const listTrainers = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const { page, limit } = req.query as { page?: string; limit?: string };
+  const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit || '20', 10) || 20));
+  const skip = (pageNum - 1) * limitNum;
 
-  return sendSuccess(res, 'Trainers fetched successfully', { trainers }, HTTP_STATUS.OK) as any;
+  const [trainers, total] = await Promise.all([
+    Trainer.find()
+      .populate('userId', 'firstName lastName email phone bio profilePicture isActive')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum),
+    Trainer.countDocuments(),
+  ]);
+
+  return sendSuccess(
+    res,
+    'Trainers fetched successfully',
+    {
+      trainers,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
+        hasNextPage: pageNum * limitNum < total,
+        hasPrevPage: pageNum > 1,
+      },
+    },
+    HTTP_STATUS.OK
+  ) as any;
 });
 
 const listPublicTrainers = asyncHandler(async (_req: RequestWithUser, res: Response): Promise<void> => {
   const trainers = await Trainer.find({ isSuspended: false })
     .populate('userId', 'firstName lastName email phone bio profilePicture isActive')
-    .sort({ isFeatured: -1, createdAt: -1 });
+    .sort({ isFeatured: -1, createdAt: -1 })
+    .lean();
 
   const activeTrainers = trainers.filter((trainer) => {
     const user = trainer.userId as unknown as { isActive?: boolean } | null;
     return user?.isActive !== false;
   });
 
-  return sendSuccess(res, 'Public trainers fetched successfully', { trainers: activeTrainers }, HTTP_STATUS.OK) as any;
+  // Aggregate ratings from completed bookings
+  const trainerIds = activeTrainers.map((t) => t._id);
+  const ratingAggs = await Booking.aggregate([
+    { $match: { trainerId: { $in: trainerIds }, clientRating: { $exists: true, $ne: null } } },
+    { $group: { _id: '$trainerId', averageRating: { $avg: '$clientRating' }, ratingCount: { $sum: 1 } } },
+  ]);
+  const ratingMap = new Map(ratingAggs.map((r) => [r._id.toString(), r]));
+
+  const trainersWithRatings = activeTrainers.map((t) => ({
+    ...t,
+    averageRating: parseFloat((ratingMap.get(t._id.toString())?.averageRating ?? 0).toFixed(1)),
+    ratingCount: ratingMap.get(t._id.toString())?.ratingCount ?? 0,
+  }));
+
+  return sendSuccess(res, 'Public trainers fetched successfully', { trainers: trainersWithRatings }, HTTP_STATUS.OK) as any;
 });
 
 const getPublicTrainer = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
@@ -101,8 +144,9 @@ const listPublicTrainerAvailability = asyncHandler(async (req: RequestWithUser, 
   }
 
   const availability = await TrainerAvailability.find({ trainerId, isActive: true }).sort({ dayOfWeek: 1, timeLabel: 1 });
+  const availableDates = await TrainerAvailableDate.find({ trainerId, date: { $gte: new Date() } }).sort({ date: 1 });
 
-  return sendSuccess(res, 'Trainer availability fetched successfully', { availability }, HTTP_STATUS.OK) as any;
+  return sendSuccess(res, 'Trainer availability fetched successfully', { availability, availableDates }, HTTP_STATUS.OK) as any;
 });
 
 const createTrainer = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
@@ -186,10 +230,38 @@ const createTrainerApplication = asyncHandler(async (req: RequestWithUser, res: 
   return sendSuccess(res, 'Trainer application submitted successfully', { application }, HTTP_STATUS.CREATED) as any;
 });
 
-const listTrainerApplications = asyncHandler(async (_req: RequestWithUser, res: Response): Promise<void> => {
-  const applications = await TrainerApplication.find().sort({ createdAt: -1 });
+const listTrainerApplications = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const { page, limit, status } = req.query as { page?: string; limit?: string; status?: string };
+  const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit || '50', 10) || 50));
+  const skip = (pageNum - 1) * limitNum;
 
-  return sendSuccess(res, 'Trainer applications fetched successfully', { applications }, HTTP_STATUS.OK) as any;
+  const filter: Record<string, unknown> = {};
+  if (status && ['pending', 'approved', 'rejected'].includes(status)) {
+    filter.status = status;
+  }
+
+  const [applications, total] = await Promise.all([
+    TrainerApplication.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum),
+    TrainerApplication.countDocuments(filter),
+  ]);
+
+  return sendSuccess(
+    res,
+    'Trainer applications fetched successfully',
+    {
+      applications,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
+        hasNextPage: pageNum * limitNum < total,
+        hasPrevPage: pageNum > 1,
+      },
+    },
+    HTTP_STATUS.OK
+  ) as any;
 });
 
 const approveTrainerApplication = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
@@ -294,7 +366,7 @@ const uploadTrainerPhoto = asyncHandler(async (req: RequestWithUser, res: Respon
 
   const photo = {
     filename: req.file.filename,
-    path: `/uploads/${req.file.filename}`,
+    path: `trainers/${req.file.filename}`,
     mimetype: req.file.mimetype,
   };
 
@@ -314,8 +386,8 @@ const uploadTrainerApplicationFiles = asyncHandler(async (req: RequestWithUser, 
     res,
     'Trainer application files uploaded successfully',
     {
-      photo: photo ? `/uploads/${photo.filename}` : null,
-      certificates: certificates.map((file) => `/uploads/${file.filename}`),
+      photo: photo ? `trainers/${photo.filename}` : null,
+      certificates: certificates.map((file) => `trainers/${file.filename}`),
     },
     HTTP_STATUS.OK
   ) as any;
@@ -347,6 +419,21 @@ const createTrainerProgram = asyncHandler(async (req: RequestWithUser, res: Resp
   });
 
   return sendSuccess(res, 'Trainer program created successfully', { program }, HTTP_STATUS.CREATED) as any;
+});
+
+const uploadTrainerProgramImage = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  await getCurrentTrainer(req);
+
+  if (!req.file) {
+    throw new AppError('No program image uploaded', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  return sendSuccess(
+    res,
+    'Program image uploaded successfully',
+    { image: `trainers/${req.file.filename}` },
+    HTTP_STATUS.OK
+  ) as any;
 });
 
 const updateTrainerProgram = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
@@ -383,6 +470,36 @@ const listMyTrainerAvailability = asyncHandler(async (req: RequestWithUser, res:
   const availability = await TrainerAvailability.find({ trainerId: trainer._id }).sort({ dayOfWeek: 1, timeLabel: 1 });
 
   return sendSuccess(res, 'Trainer availability fetched successfully', { availability }, HTTP_STATUS.OK) as any;
+});
+
+const listMyTrainerCalendarAvailability = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const trainer = await getCurrentTrainer(req);
+  const availableDates = await TrainerAvailableDate.find({ trainerId: trainer._id }).sort({ date: 1 });
+  return sendSuccess(res, 'Trainer calendar availability fetched successfully', { availableDates }, HTTP_STATUS.OK) as any;
+});
+
+const saveMyTrainerCalendarAvailability = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const trainer = await getCurrentTrainer(req);
+  const body = req.body as TrainerCalendarAvailabilityRequest;
+  const now = new Date();
+  // Allow any date within the 3 calendar months shown on the UI (from the 1st of the
+  // current month, not from today — weekly slot toggling can produce earlier dates in
+  // the current month when today is not the 1st).
+  const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 3, 1));
+  const dates = Array.from(new Set(body.dates)).map((value) => new Date(`${value}T00:00:00.000Z`));
+
+  if (dates.some((date) => Number.isNaN(date.getTime()) || date < startOfMonth || date >= end)) {
+    throw new AppError('Availability dates must be within the current three-month calendar', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  await TrainerAvailableDate.deleteMany({ trainerId: trainer._id });
+  if (dates.length) {
+    await TrainerAvailableDate.insertMany(dates.map((date) => ({ trainerId: trainer._id, date })));
+  }
+
+  const availableDates = await TrainerAvailableDate.find({ trainerId: trainer._id }).sort({ date: 1 });
+  return sendSuccess(res, 'Trainer calendar availability saved successfully', { availableDates }, HTTP_STATUS.OK) as any;
 });
 
 const createTrainerAvailability = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
@@ -425,6 +542,16 @@ const deleteTrainerAvailability = asyncHandler(async (req: RequestWithUser, res:
   return sendSuccess(res, 'Trainer availability deleted successfully', { slotId }, HTTP_STATUS.OK) as any;
 });
 
+const getPublicTrainerReviews = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const { trainerId } = req.params;
+  const reviews = await Booking.find({ trainerId, clientRating: { $exists: true, $ne: null } })
+    .populate('clientId', 'firstName lastName profilePicture')
+    .select('clientRating clientComment slotDate timeLabel clientId')
+    .sort({ updatedAt: -1 })
+    .lean();
+  return sendSuccess(res, 'Trainer reviews', { reviews }, HTTP_STATUS.OK) as any;
+});
+
 export {
   listTrainers,
   listPublicTrainers,
@@ -442,10 +569,14 @@ export {
   rejectTrainerApplication,
   listMyTrainerPrograms,
   createTrainerProgram,
+  uploadTrainerProgramImage,
   updateTrainerProgram,
   deleteTrainerProgram,
   listMyTrainerAvailability,
+  listMyTrainerCalendarAvailability,
+  saveMyTrainerCalendarAvailability,
   createTrainerAvailability,
   updateTrainerAvailability,
   deleteTrainerAvailability,
+  getPublicTrainerReviews,
 };

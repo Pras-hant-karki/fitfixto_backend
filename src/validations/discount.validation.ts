@@ -26,6 +26,7 @@ export const createBundleSchema = z
   .object({
     title: z.string().trim().min(2).max(150),
     description: z.string().trim().max(300).optional().or(z.literal('')),
+    image: z.string().trim().optional().or(z.literal('')),
     productIds: z.array(z.string().min(1)).min(2, 'Bundle must have at least 2 products'),
     discountPercentage: z.number().min(1).max(99),
     isActive: z.boolean().optional().default(true),

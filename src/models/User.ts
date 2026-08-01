@@ -2,6 +2,7 @@ import { Schema, model, Document, Types } from 'mongoose';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { UserRole } from '../types/index';
+import { LOGIN_ATTEMPT_POLICY } from '../constants/app.constants';
 
 export interface IUser extends Document {
   _id: Types.ObjectId;
@@ -13,12 +14,21 @@ export interface IUser extends Document {
   role: UserRole;
   profilePicture?: string;
   bio?: string;
+  address?: string;
   isEmailVerified: boolean;
   emailVerificationToken?: string;
   emailVerificationExpires?: Date;
   isActive: boolean;
   resetPasswordToken?: string;
   resetPasswordExpires?: Date;
+  /** Failed logins inside the current window. Set to 0 in Compass to clear a lockout. */
+  loginAttempts: number;
+  /** Start of the current attempt window; null once the window has lapsed. */
+  loginAttemptWindowStart?: Date | null;
+  /** Locked until this moment. Set to null in Compass to unlock immediately. */
+  loginLockedUntil?: Date | null;
+  /** Timestamp of the last successful sign-in, for auditing. */
+  lastLoginAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
   comparePassword(password: string): Promise<boolean>;
@@ -27,6 +37,10 @@ export interface IUser extends Document {
   verifyEmailToken(token: string): boolean;
   generatePasswordResetToken(): string;
   verifyResetPasswordToken(token: string): boolean;
+  isLoginLocked(): boolean;
+  loginLockRetryAfterSeconds(): number;
+  registerFailedLogin(): void;
+  clearLoginAttempts(): void;
 }
 
 const userSchema = new Schema<IUser>(
@@ -75,6 +89,11 @@ const userSchema = new Schema<IUser>(
       type: String,
       maxlength: [500, 'Bio must be at most 500 characters'],
     },
+    address: {
+      type: String,
+      maxlength: [255, 'Address must be at most 255 characters'],
+      default: '',
+    },
     isEmailVerified: {
       type: Boolean,
       default: false,
@@ -98,6 +117,25 @@ const userSchema = new Schema<IUser>(
     resetPasswordExpires: {
       type: Date,
       select: false,
+    },
+    // Login throttle counters. Deliberately NOT `select: false` so they are visible and
+    // editable in MongoDB Compass without extra steps.
+    loginAttempts: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    loginAttemptWindowStart: {
+      type: Date,
+      default: null,
+    },
+    loginLockedUntil: {
+      type: Date,
+      default: null,
+    },
+    lastLoginAt: {
+      type: Date,
+      default: null,
     },
   },
   {
@@ -176,6 +214,47 @@ userSchema.methods.verifyResetPasswordToken = function (token: string): boolean 
   }
 
   return true;
+};
+
+userSchema.methods.isLoginLocked = function (): boolean {
+  return Boolean(this.loginLockedUntil && this.loginLockedUntil.getTime() > Date.now());
+};
+
+userSchema.methods.loginLockRetryAfterSeconds = function (): number {
+  if (!this.isLoginLocked()) return 0;
+  return Math.max(1, Math.ceil((this.loginLockedUntil.getTime() - Date.now()) / 1000));
+};
+
+/**
+ * Records one failed sign-in against a rolling window.
+ *
+ * The window restarts whenever the previous one has lapsed, so ten failures spread over an
+ * hour never lock the account — only ten inside the configured window do. Callers must save
+ * the document afterwards.
+ */
+userSchema.methods.registerFailedLogin = function (): void {
+  const now = Date.now();
+  const windowStart = this.loginAttemptWindowStart ? this.loginAttemptWindowStart.getTime() : 0;
+  const windowHasLapsed = !windowStart || now - windowStart >= LOGIN_ATTEMPT_POLICY.WINDOW_MS;
+
+  if (windowHasLapsed) {
+    this.loginAttemptWindowStart = new Date(now);
+    this.loginAttempts = 1;
+  } else {
+    this.loginAttempts += 1;
+  }
+
+  if (this.loginAttempts >= LOGIN_ATTEMPT_POLICY.MAX_ATTEMPTS) {
+    this.loginLockedUntil = new Date(now + LOGIN_ATTEMPT_POLICY.LOCK_MS);
+  }
+};
+
+/** Clears the throttle after a successful sign-in. Callers must save the document. */
+userSchema.methods.clearLoginAttempts = function (): void {
+  this.loginAttempts = 0;
+  this.loginAttemptWindowStart = null;
+  this.loginLockedUntil = null;
+  this.lastLoginAt = new Date();
 };
 
 const User = model<IUser>('User', userSchema);

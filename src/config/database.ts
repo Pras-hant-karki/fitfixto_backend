@@ -3,7 +3,10 @@ import env from './env';
 
 const connectDB = async (): Promise<void> => {
   try {
-    const uri = env.NODE_ENV === 'test' ? env.MONGODB_TEST_URI : env.MONGODB_URI;
+    const base = env.MONGODB_URL.replace(/\/$/, '');
+    const uri = env.NODE_ENV === 'test'
+      ? `${base}/${env.DB_NAME}-test`
+      : `${base}/${env.DB_NAME}`;
 
     await mongoose.connect(uri, {
       autoIndex: env.NODE_ENV !== 'production',

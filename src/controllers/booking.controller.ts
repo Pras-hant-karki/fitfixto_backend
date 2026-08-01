@@ -4,7 +4,7 @@ import { sendSuccess } from '../utils/apiResponse';
 import { HTTP_STATUS } from '../constants/app.constants';
 import { AppError } from '../utils/appError';
 import { RequestWithUser } from '../middlewares/auth';
-import Booking from '../models/Booking';
+import Booking, { BookingStatus } from '../models/Booking';
 import Trainer from '../models/Trainer';
 import TrainerAvailability from '../models/TrainerAvailability';
 import { CreateBookingRequest, UpdateBookingStatusRequest } from '../validations/booking.validation';
@@ -24,8 +24,9 @@ const createBooking = asyncHandler(async (req: RequestWithUser, res: Response): 
   }
 
   const slotDate = new Date(`${body.slotDate}T00:00:00.000Z`);
-  if (Number.isNaN(slotDate.getTime()) || slotDate < new Date(new Date().toISOString().slice(0, 10))) {
-    throw new AppError('Please select a valid future booking date', HTTP_STATUS.BAD_REQUEST);
+  const todayUtc = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z');
+  if (Number.isNaN(slotDate.getTime()) || slotDate <= todayUtc) {
+    throw new AppError('Booking date must be at least one day in the future', HTTP_STATUS.BAD_REQUEST);
   }
 
   const dayKeys = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
@@ -100,18 +101,39 @@ const getMyTrainerBookings = asyncHandler(async (req: RequestWithUser, res: Resp
   return sendSuccess(res, 'Trainer bookings fetched successfully', { bookings }, HTTP_STATUS.OK) as any;
 });
 
+const BOOKING_TRANSITIONS: Record<BookingStatus, BookingStatus[]> = {
+  pending:   ['confirmed', 'cancelled'],
+  confirmed: ['completed', 'cancelled'],
+  cancelled: [],
+  completed: [],
+};
+
 const updateBookingStatus = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
-  const trainer = await getTrainerByUserId(req.user?._id);
   const { bookingId } = req.params;
   const body = req.body as UpdateBookingStatusRequest;
 
-  const booking = await Booking.findOneAndUpdate(
-    { _id: bookingId, trainerId: trainer._id },
-    { status: body.status, ...(body.trainerNotes !== undefined && { trainerNotes: body.trainerNotes }) },
-    { new: true, runValidators: true }
-  ).populate('clientId', 'firstName lastName email phone profilePicture');
+  let booking;
+  if (req.user?.role === 'admin') {
+    booking = await Booking.findById(bookingId);
+    if (!booking) throw new AppError('Booking not found', HTTP_STATUS.NOT_FOUND);
+  } else {
+    const trainer = await getTrainerByUserId(req.user?._id);
+    booking = await Booking.findOne({ _id: bookingId, trainerId: trainer._id });
+    if (!booking) throw new AppError('Booking not found', HTTP_STATUS.NOT_FOUND);
+  }
 
-  if (!booking) throw new AppError('Booking not found', HTTP_STATUS.NOT_FOUND);
+  const allowed = BOOKING_TRANSITIONS[booking.status];
+  if (!allowed.includes(body.status as BookingStatus)) {
+    throw new AppError(
+      `Cannot change booking status from '${booking.status}' to '${body.status}'`,
+      HTTP_STATUS.BAD_REQUEST
+    );
+  }
+
+  booking.status = body.status as BookingStatus;
+  if (body.trainerNotes !== undefined) booking.trainerNotes = body.trainerNotes;
+  await booking.save();
+  await booking.populate('clientId', 'firstName lastName email phone profilePicture');
 
   return sendSuccess(res, 'Booking updated successfully', { booking }, HTTP_STATUS.OK) as any;
 });
@@ -133,23 +155,54 @@ const cancelMyBooking = asyncHandler(async (req: RequestWithUser, res: Response)
 const getMyClients = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
   const trainer = await getTrainerByUserId(req.user?._id);
 
-  const bookings = await Booking.find({ trainerId: trainer._id })
+  const bookings = await Booking.find({ trainerId: trainer._id, status: { $ne: 'cancelled' } })
     .populate('clientId', 'firstName lastName email phone profilePicture createdAt isActive')
+    .sort({ slotDate: -1, createdAt: -1 })
     .lean();
 
-  const clientMap = new Map<string, { user: Record<string, unknown>; bookingCount: number; lastBooking: Date }>();
+  const clientMap = new Map<
+    string,
+    {
+      user: Record<string, unknown>;
+      bookingCount: number;
+      lastBooking: Date;
+      lastProgram: string;
+      upcomingSessions: number;
+    }
+  >();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const sessionLabels = {
+    single: 'Single Session',
+    five_pack: '5-Session Pack',
+    ten_pack: '10-Session Pack',
+  } as const;
 
   for (const booking of bookings) {
     const client = booking.clientId as unknown as Record<string, unknown>;
     if (!client || !client._id) continue;
     const clientId = String(client._id);
     const existing = clientMap.get(clientId);
+    const sessionCount = booking.sessionCount || 1;
+    const upcomingSessions =
+      booking.slotDate >= today && ['pending', 'confirmed'].includes(booking.status) ? sessionCount : 0;
+    const lastProgram = sessionLabels[booking.sessionType || 'single'];
 
     if (existing) {
-      existing.bookingCount += 1;
-      if (booking.slotDate > existing.lastBooking) existing.lastBooking = booking.slotDate;
+      existing.bookingCount += sessionCount;
+      existing.upcomingSessions += upcomingSessions;
+      if (booking.slotDate > existing.lastBooking) {
+        existing.lastBooking = booking.slotDate;
+        existing.lastProgram = lastProgram;
+      }
     } else {
-      clientMap.set(clientId, { user: client, bookingCount: 1, lastBooking: booking.slotDate });
+      clientMap.set(clientId, {
+        user: client,
+        bookingCount: sessionCount,
+        lastBooking: booking.slotDate,
+        lastProgram,
+        upcomingSessions,
+      });
     }
   }
 
@@ -160,6 +213,69 @@ const getMyClients = asyncHandler(async (req: RequestWithUser, res: Response): P
   return sendSuccess(res, 'Trainer clients fetched successfully', { clients }, HTTP_STATUS.OK) as any;
 });
 
+const submitClientReview = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const { bookingId } = req.params;
+  const { rating, comment } = req.body as { rating: number; comment?: string };
+
+  if (!rating || rating < 1 || rating > 5) {
+    throw new AppError('Rating must be between 1 and 5', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  const booking = await Booking.findOne({ _id: bookingId, clientId: req.user?._id, status: 'completed' });
+  if (!booking) throw new AppError('Completed booking not found', HTTP_STATUS.NOT_FOUND);
+  if (booking.clientRating) throw new AppError('You have already reviewed this session', HTTP_STATUS.CONFLICT);
+
+  booking.clientRating = rating;
+  booking.clientComment = comment?.trim();
+  await booking.save();
+
+  return sendSuccess(res, 'Review submitted successfully', { booking }, HTTP_STATUS.OK) as any;
+});
+
+const getAllBookingsAdmin = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const { page, limit, search, status } = req.query as { page?: string; limit?: string; search?: string; status?: string };
+  const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit || '20', 10) || 20));
+  const skip = (pageNum - 1) * limitNum;
+
+  const filter: Record<string, unknown> = {};
+  if (status && status !== 'all') {
+    filter.status = status;
+  }
+  if (search?.trim()) {
+    const safeSearch = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(safeSearch, 'i');
+    filter.$or = [{ contactName: regex }, { contactEmail: regex }, { timeLabel: regex }];
+  }
+
+  const [bookings, total] = await Promise.all([
+    Booking.find(filter)
+      .populate({ path: 'trainerId', populate: { path: 'userId', select: 'firstName lastName email profilePicture' } })
+      .populate('clientId', 'firstName lastName email')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum),
+    Booking.countDocuments(filter),
+  ]);
+
+  return sendSuccess(
+    res,
+    'All bookings',
+    {
+      bookings,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
+        hasNextPage: pageNum * limitNum < total,
+        hasPrevPage: pageNum > 1,
+      },
+    },
+    HTTP_STATUS.OK
+  ) as any;
+});
+
 export {
   createBooking,
   getMyClientBookings,
@@ -167,4 +283,6 @@ export {
   updateBookingStatus,
   cancelMyBooking,
   getMyClients,
+  submitClientReview,
+  getAllBookingsAdmin,
 };

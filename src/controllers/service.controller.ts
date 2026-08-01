@@ -52,7 +52,7 @@ export const uploadServiceImage = asyncHandler(async (req: RequestWithUser, res:
 
   const image = {
     filename: req.file.filename,
-    path: `/uploads/${req.file.filename}`,
+    path: `services/${req.file.filename}`,
     mimetype: req.file.mimetype,
   };
 

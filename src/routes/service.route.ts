@@ -8,7 +8,7 @@ import {
   uploadServiceImage,
 } from '../controllers/service.controller';
 import { authenticate, authorize } from '../middlewares/auth';
-import { uploadProductImages } from '../middlewares/fileUpload';
+import { uploadServiceImage as uploadServiceImageMiddleware } from '../middlewares/fileUpload';
 import { validateBody, validateParams } from '../middlewares/validation';
 import { UserRole } from '../types/index';
 import {
@@ -32,7 +32,7 @@ router.post(
   '/upload-image',
   authenticate,
   authorize(UserRole.ADMIN),
-  uploadProductImages.single('image'),
+  uploadServiceImageMiddleware.single('image'),
   uploadServiceImage
 );
 router.put(

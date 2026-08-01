@@ -4,6 +4,7 @@ export interface IBundle extends Document {
   _id: Types.ObjectId;
   title: string;
   description?: string;
+  image?: string;
   productIds: Types.ObjectId[];
   discountPercentage: number;
   isActive: boolean;
@@ -24,6 +25,10 @@ const bundleSchema = new Schema<IBundle>(
       type: String,
       trim: true,
       maxlength: [300, 'Description must be at most 300 characters'],
+    },
+    image: {
+      type: String,
+      trim: true,
     },
     productIds: {
       type: [{ type: Schema.Types.ObjectId, ref: 'Product' }],

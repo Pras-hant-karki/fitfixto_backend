@@ -94,6 +94,9 @@ export const trainerProgramSchema = z
   .object({
     title: z.string().min(2, 'Program title must be at least 2 characters').max(100),
     description: z.string().max(500, 'Program description must be at most 500 characters').optional(),
+    programType: z.string().min(2, 'Program type is required').max(50).optional().default('1-on-1'),
+    level: z.enum(['beginner', 'intermediate', 'advanced']).optional().default('beginner'),
+    image: profilePictureSchema,
     durationWeeks: z.coerce.number().int().min(1, 'Duration must be at least 1 week'),
     sessions: z.coerce.number().int().min(1, 'Sessions must be at least 1'),
     price: z.coerce.number().nonnegative('Program price cannot be negative'),
@@ -128,6 +131,14 @@ export type TrainerAvailabilityRequest = z.infer<typeof trainerAvailabilitySchem
 export const updateTrainerAvailabilitySchema = trainerAvailabilitySchema.partial().strict();
 
 export type UpdateTrainerAvailabilityRequest = z.infer<typeof updateTrainerAvailabilitySchema>;
+
+export const trainerCalendarAvailabilitySchema = z
+  .object({
+    dates: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Dates must use YYYY-MM-DD format')).max(100),
+  })
+  .strict();
+
+export type TrainerCalendarAvailabilityRequest = z.infer<typeof trainerCalendarAvailabilitySchema>;
 
 export const trainerAvailabilityIdParamSchema = z
   .object({

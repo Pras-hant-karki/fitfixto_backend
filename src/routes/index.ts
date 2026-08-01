@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import healthRouter from './health.route';
+import cronRouter from './cron.route';
 import adminRouter from './admin.route';
 import authRouter from './auth.route';
 import deliveryAddressRouter from './deliveryAddress.route';
@@ -15,11 +16,13 @@ import paymentRouter from './payment.route';
 import partnerGymRouter from './partnerGym.route';
 import bookingRouter from './booking.route';
 import serviceRouter from './service.route';
+import serviceBookingRouter from './serviceBooking.route';
 import discountRouter from './discount.route';
 
 const apiRouter = Router();
 
 apiRouter.use('/health', healthRouter);
+apiRouter.use('/cron', cronRouter);
 apiRouter.use('/admin', adminRouter);
 apiRouter.use('/auth', authRouter);
 apiRouter.use('/delivery-addresses', deliveryAddressRouter);
@@ -35,6 +38,7 @@ apiRouter.use('/payments', paymentRouter);
 apiRouter.use('/partner-gyms', partnerGymRouter);
 apiRouter.use('/bookings', bookingRouter);
 apiRouter.use('/services', serviceRouter);
+apiRouter.use('/service-bookings', serviceBookingRouter);
 apiRouter.use('/discounts', discountRouter);
 
 export default apiRouter;

@@ -2,10 +2,12 @@ import { Router } from 'express';
 import {
   cancelMyBooking,
   createBooking,
+  getAllBookingsAdmin,
   getMyClientBookings,
   getMyClients,
   getMyTrainerBookings,
   updateBookingStatus,
+  submitClientReview,
 } from '../controllers/booking.controller';
 import { authenticate, authorize } from '../middlewares/auth';
 import { validateBody, validateParams } from '../middlewares/validation';
@@ -19,13 +21,14 @@ import { UserRole } from '../types/index';
 const router = Router();
 
 router.post('/', authenticate, validateBody(createBookingSchema), createBooking);
+router.get('/admin/all', authenticate, authorize(UserRole.ADMIN), getAllBookingsAdmin);
 router.get('/my', authenticate, getMyClientBookings);
 router.get('/trainer', authenticate, authorize(UserRole.TRAINER), getMyTrainerBookings);
 router.get('/trainer/clients', authenticate, authorize(UserRole.TRAINER), getMyClients);
 router.patch(
   '/:bookingId/status',
   authenticate,
-  authorize(UserRole.TRAINER),
+  authorize(UserRole.TRAINER, UserRole.ADMIN),
   validateParams(bookingIdParamSchema),
   validateBody(updateBookingStatusSchema),
   updateBookingStatus
@@ -35,6 +38,12 @@ router.patch(
   authenticate,
   validateParams(bookingIdParamSchema),
   cancelMyBooking
+);
+router.patch(
+  '/:bookingId/review',
+  authenticate,
+  validateParams(bookingIdParamSchema),
+  submitClientReview
 );
 
 export default router;

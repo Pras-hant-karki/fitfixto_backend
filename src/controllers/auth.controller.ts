@@ -4,7 +4,9 @@ import { HTTP_STATUS } from '../constants/app.constants';
 import { AppError } from '../utils/appError';
 import { sendSuccess, sendError } from '../utils/apiResponse';
 import { asyncHandler } from '../utils/asyncHandler';
-import { generateTokenPair } from '../utils/jwt';
+import { extractTokenFromRequest, generateTokenPair, verifyRefreshToken } from '../utils/jwt';
+import { buildSessionEnvelope } from '../utils/sessionEnvelope';
+import { formatZodError } from '../utils/validationError';
 import env from '../config/env';
 import {
   registerSchema,
@@ -14,6 +16,7 @@ import {
   resetPasswordSchema,
   changePasswordSchema,
   updateProfileSchema,
+  strongPasswordSchema,
 } from '../validations/auth.validation';
 import User, { IUser } from '../models/User';
 import { RequestWithUser } from '../middlewares/auth';
@@ -22,15 +25,26 @@ import {
   sendPasswordResetEmail,
 } from '../services/emailService';
 
+/**
+ * Raised when an account has exhausted its login attempts. Carries LOGIN_LOCKED so the
+ * frontend can show a countdown rather than a generic credential error.
+ */
+const lockedOutError = (retryAfterSeconds: number) =>
+  new AppError(
+    `Too many failed sign-in attempts for this account. Please try again in ${retryAfterSeconds} second${
+      retryAfterSeconds === 1 ? '' : 's'
+    }.`,
+    HTTP_STATUS.TOO_MANY_REQUESTS,
+    true,
+    'LOGIN_LOCKED'
+  );
+
 const register = asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const validationResult = registerSchema.safeParse(req.body);
 
   if (!validationResult.success) {
-    const errors = validationResult.error.flatten().fieldErrors;
     throw new AppError(
-      `Validation error: ${Object.values(errors)
-        .flat()
-        .join(', ')}`,
+      `Validation error: ${formatZodError(validationResult.error)}`,
       HTTP_STATUS.BAD_REQUEST
     );
   }
@@ -96,6 +110,7 @@ const register = asyncHandler(async (req: Request, res: Response): Promise<void>
         accessToken,
         refreshToken,
       },
+      session: buildSessionEnvelope(newUser, accessToken),
     },
     HTTP_STATUS.CREATED
   ) as any;
@@ -105,11 +120,8 @@ const login = asyncHandler(async (req: Request, res: Response): Promise<void> =>
   const validationResult = loginSchema.safeParse(req.body);
 
   if (!validationResult.success) {
-    const errors = validationResult.error.flatten().fieldErrors;
     throw new AppError(
-      `Validation error: ${Object.values(errors)
-        .flat()
-        .join(', ')}`,
+      `Validation error: ${formatZodError(validationResult.error)}`,
       HTTP_STATUS.BAD_REQUEST
     );
   }
@@ -122,15 +134,33 @@ const login = asyncHandler(async (req: Request, res: Response): Promise<void> =>
     throw new AppError('Invalid email or password', HTTP_STATUS.UNAUTHORIZED);
   }
 
+  if (user.isLoginLocked()) {
+    throw lockedOutError(user.loginLockRetryAfterSeconds());
+  }
+
   const isPasswordValid = await user.comparePassword(password);
 
   if (!isPasswordValid) {
+    user.registerFailedLogin();
+    await user.save();
+
+    if (user.isLoginLocked()) {
+      throw lockedOutError(user.loginLockRetryAfterSeconds());
+    }
+
     throw new AppError('Invalid email or password', HTTP_STATUS.UNAUTHORIZED);
   }
 
   if (user.role === 'admin') {
-    throw new AppError('Admin accounts must use the admin login page', HTTP_STATUS.FORBIDDEN);
+    throw new AppError('Invalid email or password', HTTP_STATUS.UNAUTHORIZED);
   }
+
+  if (!user.isActive) {
+    throw new AppError('Your account has been suspended. Please contact support.', HTTP_STATUS.FORBIDDEN);
+  }
+
+  user.clearLoginAttempts();
+  await user.save();
 
   const { accessToken, refreshToken } = generateTokenPair(
     user._id.toString(),
@@ -147,6 +177,8 @@ const login = asyncHandler(async (req: Request, res: Response): Promise<void> =>
     role: user.role,
   };
 
+  const passwordIsWeak = !strongPasswordSchema.safeParse(password).success;
+
   return sendSuccess(
     res,
     'Login successful',
@@ -156,6 +188,8 @@ const login = asyncHandler(async (req: Request, res: Response): Promise<void> =>
         accessToken,
         refreshToken,
       },
+      session: buildSessionEnvelope(user, accessToken),
+      passwordIsWeak,
     },
     HTTP_STATUS.OK
   ) as any;
@@ -165,11 +199,8 @@ const adminLogin = asyncHandler(async (req: Request, res: Response): Promise<voi
   const validationResult = loginSchema.safeParse(req.body);
 
   if (!validationResult.success) {
-    const errors = validationResult.error.flatten().fieldErrors;
     throw new AppError(
-      `Validation error: ${Object.values(errors)
-        .flat()
-        .join(', ')}`,
+      `Validation error: ${formatZodError(validationResult.error)}`,
       HTTP_STATUS.BAD_REQUEST
     );
   }
@@ -181,11 +212,29 @@ const adminLogin = asyncHandler(async (req: Request, res: Response): Promise<voi
     throw new AppError('Invalid admin credentials', HTTP_STATUS.UNAUTHORIZED);
   }
 
+  if (user.isLoginLocked()) {
+    throw lockedOutError(user.loginLockRetryAfterSeconds());
+  }
+
   const isPasswordValid = await user.comparePassword(password);
 
   if (!isPasswordValid) {
+    user.registerFailedLogin();
+    await user.save();
+
+    if (user.isLoginLocked()) {
+      throw lockedOutError(user.loginLockRetryAfterSeconds());
+    }
+
     throw new AppError('Invalid admin credentials', HTTP_STATUS.UNAUTHORIZED);
   }
+
+  if (!user.isActive) {
+    throw new AppError('This account has been suspended.', HTTP_STATUS.FORBIDDEN);
+  }
+
+  user.clearLoginAttempts();
+  await user.save();
 
   const { accessToken, refreshToken } = generateTokenPair(
     user._id.toString(),
@@ -209,6 +258,62 @@ const adminLogin = asyncHandler(async (req: Request, res: Response): Promise<voi
         accessToken,
         refreshToken,
       },
+      session: buildSessionEnvelope(user, accessToken),
+    },
+    HTTP_STATUS.OK
+  ) as any;
+});
+
+const refreshToken = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  const { refreshToken: token } = req.body;
+
+  if (!token) {
+    throw new AppError('Refresh token is required', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  // Throws 401 AppError if expired or invalid
+  const { userId } = verifyRefreshToken(token);
+
+  const user = await User.findById(userId);
+
+  if (!user) {
+    throw new AppError('User not found', HTTP_STATUS.UNAUTHORIZED);
+  }
+
+  if (!user.isActive) {
+    throw new AppError('Your account has been suspended.', HTTP_STATUS.FORBIDDEN);
+  }
+
+  const { accessToken, refreshToken: newRefreshToken } = generateTokenPair(
+    user._id.toString(),
+    user.email,
+    user.role
+  );
+
+  return sendSuccess(
+    res,
+    'Token refreshed successfully',
+    {
+      user: {
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        profilePicture: user.profilePicture,
+        bio: user.bio,
+        address: user.address,
+        isEmailVerified: user.isEmailVerified,
+        isActive: user.isActive,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      },
+      tokens: {
+        accessToken,
+        refreshToken: newRefreshToken,
+      },
+      session: buildSessionEnvelope(user, accessToken),
     },
     HTTP_STATUS.OK
   ) as any;
@@ -232,6 +337,52 @@ const getCurrentUser = asyncHandler(async (req: RequestWithUser, res: Response):
         role: req.user.role,
         profilePicture: req.user.profilePicture,
         bio: req.user.bio,
+        address: req.user.address,
+        isEmailVerified: req.user.isEmailVerified,
+        isActive: req.user.isActive,
+        createdAt: req.user.createdAt,
+        updatedAt: req.user.updatedAt,
+      },
+    },
+    HTTP_STATUS.OK
+  ) as any;
+});
+
+/**
+ * Authoritative session check.
+ *
+ * `authenticate` has already verified the access token signature, confirmed the account is
+ * active, confirmed the token's role still matches the database, and validated the client's
+ * mirrored session cookie. Reaching this handler therefore means the session is genuine, so
+ * the role returned here is the value the frontend is allowed to route and render on.
+ */
+const getSession = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  if (!req.user) {
+    throw new AppError('Not authenticated', HTTP_STATUS.UNAUTHORIZED);
+  }
+
+  const token = extractTokenFromRequest(req);
+
+  if (!token) {
+    throw new AppError('Authentication token missing', HTTP_STATUS.UNAUTHORIZED);
+  }
+
+  return sendSuccess(
+    res,
+    'Session is valid',
+    {
+      role: req.user.role,
+      session: buildSessionEnvelope(req.user, token),
+      user: {
+        id: req.user._id,
+        firstName: req.user.firstName,
+        lastName: req.user.lastName,
+        email: req.user.email,
+        phone: req.user.phone,
+        role: req.user.role,
+        profilePicture: req.user.profilePicture,
+        bio: req.user.bio,
+        address: req.user.address,
         isEmailVerified: req.user.isEmailVerified,
         isActive: req.user.isActive,
         createdAt: req.user.createdAt,
@@ -250,11 +401,8 @@ const verifyEmail = asyncHandler(async (req: Request, res: Response): Promise<vo
   const validationResult = verifyEmailSchema.safeParse(req.body);
 
   if (!validationResult.success) {
-    const errors = validationResult.error.flatten().fieldErrors;
     throw new AppError(
-      `Validation error: ${Object.values(errors)
-        .flat()
-        .join(', ')}`,
+      `Validation error: ${formatZodError(validationResult.error)}`,
       HTTP_STATUS.BAD_REQUEST
     );
   }
@@ -263,10 +411,11 @@ const verifyEmail = asyncHandler(async (req: Request, res: Response): Promise<vo
 
   const user = await User.findOne({ email }).select('+emailVerificationToken +emailVerificationExpires');
 
+  // Generic error — do not reveal whether the email exists
   if (!user) {
     throw new AppError(
-      'User not found',
-      HTTP_STATUS.NOT_FOUND
+      'Invalid or expired verification token',
+      HTTP_STATUS.UNAUTHORIZED
     );
   }
 
@@ -294,11 +443,8 @@ const forgotPassword = asyncHandler(
     const validationResult = forgotPasswordSchema.safeParse(req.body);
 
     if (!validationResult.success) {
-      const errors = validationResult.error.flatten().fieldErrors;
       throw new AppError(
-        `Validation error: ${Object.values(errors)
-          .flat()
-          .join(', ')}`,
+        `Validation error: ${formatZodError(validationResult.error)}`,
         HTTP_STATUS.BAD_REQUEST
       );
     }
@@ -307,18 +453,14 @@ const forgotPassword = asyncHandler(
 
     const user = await User.findOne({ email });
 
-    if (!user) {
-      throw new AppError(
-        'No user found with this email address',
-        HTTP_STATUS.NOT_FOUND
-      );
-    }
-
-    if (user.role === 'admin') {
-      throw new AppError(
-        'Admin password reset is disabled. Reset admin passwords directly from the database.',
-        HTTP_STATUS.FORBIDDEN
-      );
+    // Always return the same generic response to prevent user enumeration
+    if (!user || user.role === 'admin') {
+      return sendSuccess(
+        res,
+        'If an account with that email exists, a password reset link has been sent.',
+        {},
+        HTTP_STATUS.OK
+      ) as any;
     }
 
     const resetToken = user.generatePasswordResetToken();
@@ -339,8 +481,8 @@ const forgotPassword = asyncHandler(
 
     return sendSuccess(
       res,
-      'Password reset email sent successfully',
-      { email },
+      'If an account with that email exists, a password reset link has been sent.',
+      {},
       HTTP_STATUS.OK
     ) as any;
   }
@@ -351,11 +493,8 @@ const resetPassword = asyncHandler(
     const validationResult = resetPasswordSchema.safeParse(req.body);
 
     if (!validationResult.success) {
-      const errors = validationResult.error.flatten().fieldErrors;
       throw new AppError(
-        `Validation error: ${Object.values(errors)
-          .flat()
-          .join(', ')}`,
+        `Validation error: ${formatZodError(validationResult.error)}`,
         HTTP_STATUS.BAD_REQUEST
       );
     }
@@ -406,11 +545,8 @@ const changePassword = asyncHandler(
     const validationResult = changePasswordSchema.safeParse(req.body);
 
     if (!validationResult.success) {
-      const errors = validationResult.error.flatten().fieldErrors;
       throw new AppError(
-        `Validation error: ${Object.values(errors)
-          .flat()
-          .join(', ')}`,
+        `Validation error: ${formatZodError(validationResult.error)}`,
         HTTP_STATUS.BAD_REQUEST
       );
     }
@@ -456,16 +592,13 @@ const updateProfile = asyncHandler(
     const validationResult = updateProfileSchema.safeParse(req.body);
 
     if (!validationResult.success) {
-      const errors = validationResult.error.flatten().fieldErrors;
       throw new AppError(
-        `Validation error: ${Object.values(errors)
-          .flat()
-          .join(', ')}`,
+        `Validation error: ${formatZodError(validationResult.error)}`,
         HTTP_STATUS.BAD_REQUEST
       );
     }
 
-    const { firstName, lastName, phone, bio, profilePicture } = validationResult.data;
+    const { firstName, lastName, phone, bio, address, profilePicture } = validationResult.data;
 
     const user = await User.findById(req.user._id);
 
@@ -492,6 +625,7 @@ const updateProfile = asyncHandler(
     if (lastName) user.lastName = lastName;
     if (phone) user.phone = phone;
     if (bio !== undefined) user.bio = bio;
+    if (address !== undefined) user.address = address;
     if (profilePicture) user.profilePicture = profilePicture;
 
     await user.save();
@@ -505,6 +639,7 @@ const updateProfile = asyncHandler(
       role: user.role,
       profilePicture: user.profilePicture,
       bio: user.bio,
+      address: user.address,
       isEmailVerified: user.isEmailVerified,
       isActive: user.isActive,
       createdAt: user.createdAt,
@@ -542,8 +677,7 @@ const uploadProfileImage = asyncHandler(
       );
     }
 
-    // Store the file path relative to the uploads directory
-    const relativePath = `/uploads/${req.file.filename}`;
+    const relativePath = `users/${req.file.filename}`;
     user.profilePicture = relativePath;
     await user.save();
 
@@ -559,4 +693,4 @@ const uploadProfileImage = asyncHandler(
   }
 );
 
-export { register, login, adminLogin, logout, getCurrentUser, verifyEmail, forgotPassword, resetPassword, changePassword, updateProfile, uploadProfileImage };
+export { register, login, adminLogin, refreshToken, logout, getCurrentUser, getSession, verifyEmail, forgotPassword, resetPassword, changePassword, updateProfile, uploadProfileImage };

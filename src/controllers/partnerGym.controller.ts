@@ -71,7 +71,7 @@ export const uploadPartnerGymImages = asyncHandler(async (req: RequestWithUser, 
 
   const images = req.files.map((file) => ({
     filename: file.filename,
-    path: `/uploads/${file.filename}`,
+    path: `gyms/${file.filename}`,
     mimetype: file.mimetype,
   }));
 
