@@ -32,6 +32,27 @@ export const authenticate: RequestHandler = async (req: RequestWithUser, _res: R
   }
 };
 
+export const optionalAuthenticate: RequestHandler = async (req: RequestWithUser, _res: Response, next: NextFunction) => {
+  try {
+    const token = extractTokenFromRequest(req);
+
+    if (!token) {
+      return next();
+    }
+
+    const payload = verifyAccessToken(token);
+    const user = await User.findById(payload.userId).select('-password');
+
+    if (user) {
+      req.user = user;
+    }
+
+    return next();
+  } catch {
+    return next();
+  }
+};
+
 export const authorize = (...roles: UserRole[]): RequestHandler => {
   return (req: RequestWithUser, _res: Response, next: NextFunction) => {
     const user = req.user;

@@ -14,7 +14,7 @@ const initializeMailer = (): nodemailer.Transporter => {
     secure: env.EMAIL_PORT === 465,
     auth: {
       user: env.EMAIL_USER,
-      pass: env.EMAIL_PASSWORD,
+      pass: env.EMAIL_PASSWORD || env.EMAIL_PASS,
     },
   });
 

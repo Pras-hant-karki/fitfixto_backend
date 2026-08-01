@@ -1,16 +1,8 @@
 import { z } from 'zod';
 import { OrderStatus, PaymentMethod, PaymentStatus } from '../types/index';
 
-const orderItemSchema = z
+export const placeOrderSchema = z
   .object({
-    productId: z.string().min(1, 'Product ID is required'),
-    quantity: z.number().int().positive('Quantity must be at least 1'),
-  })
-  .strict();
-
-export const createOrderSchema = z
-  .object({
-    items: z.array(orderItemSchema).min(1, 'At least one order item is required'),
     deliveryAddressId: z.string().min(1, 'Delivery address ID is required'),
     paymentMethod: z.enum([
       PaymentMethod.CASH_ON_DELIVERY,
@@ -18,11 +10,19 @@ export const createOrderSchema = z
       PaymentMethod.KHALTI,
     ]),
     notes: z.string().max(1000, 'Notes must be at most 1000 characters').optional(),
-    couponCode: z.string().min(1, 'Coupon code cannot be empty').optional(),
+    voucherCode: z.string().min(1, 'Voucher code cannot be empty').optional(),
   })
   .strict();
 
-export type CreateOrderRequest = z.infer<typeof createOrderSchema>;
+export type PlaceOrderRequest = z.infer<typeof placeOrderSchema>;
+
+export const cancelOrderSchema = z
+  .object({
+    reason: z.string().max(1000, 'Cancellation reason must be at most 1000 characters').optional(),
+  })
+  .strict();
+
+export type CancelOrderRequest = z.infer<typeof cancelOrderSchema>;
 
 export const updateOrderStatusSchema = z
   .object({
@@ -53,6 +53,38 @@ export const updatePaymentStatusSchema = z
 
 export type UpdatePaymentStatusRequest = z.infer<typeof updatePaymentStatusSchema>;
 
+const adminOrderStatusQuerySchema = z
+  .string()
+  .min(1)
+  .transform((value) => value.split(',').map((status) => status.trim()).filter(Boolean))
+  .refine(
+    (statuses) =>
+      statuses.every((status) =>
+        [
+          'all',
+          'processing',
+          OrderStatus.PENDING,
+          OrderStatus.CONFIRMED,
+          OrderStatus.SHIPPED,
+          OrderStatus.DELIVERED,
+          OrderStatus.CANCELLED,
+          OrderStatus.RETURNED,
+        ].includes(status)
+      ),
+    { message: 'Invalid order status' }
+  );
+
+export const adminOrderListQuerySchema = z
+  .object({
+    status: adminOrderStatusQuerySchema.optional(),
+    search: z.string().trim().optional(),
+    page: z.coerce.number().int().min(1).optional().default(1),
+    limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+  })
+  .strict();
+
+export type AdminOrderListQueryRequest = z.infer<typeof adminOrderListQuerySchema>;
+
 export const orderIdParamSchema = z
   .object({
     orderId: z.string().min(1, 'Order ID is required'),
@@ -60,3 +92,4 @@ export const orderIdParamSchema = z
   .strict();
 
 export type OrderIdParamRequest = z.infer<typeof orderIdParamSchema>;
+

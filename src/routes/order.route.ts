@@ -1,13 +1,31 @@
 import { Router } from 'express';
-import { createOrder, getOrder, updateOrderStatus, updatePaymentStatus } from '../controllers/order.controller';
-import { validateBody, validateParams } from '../middlewares/validation';
-import { createOrderSchema, updateOrderStatusSchema, updatePaymentStatusSchema, orderIdParamSchema } from '../validations/order.validation';
+import { placeOrder, getOrder, getAdminOrder, getMyOrders, getAllOrders, cancelOrder, trackOrder, updateOrderStatus, updatePaymentStatus, downloadInvoice } from '../controllers/order.controller';
+import { authenticate, authorize } from '../middlewares/auth';
+import { UserRole } from '../types/index';
+import { validateBody, validateParams, validateQuery } from '../middlewares/validation';
+import {
+	placeOrderSchema,
+	cancelOrderSchema,
+	updateOrderStatusSchema,
+	updatePaymentStatusSchema,
+	orderIdParamSchema,
+	adminOrderListQuerySchema,
+} from '../validations/order.validation';
 
 const router = Router();
 
-router.post('/', validateBody(createOrderSchema), createOrder);
+router.use(authenticate);
+
+router.get('/my-orders', getMyOrders);
+router.get('/admin/all', authorize(UserRole.ADMIN), validateQuery(adminOrderListQuerySchema), getAllOrders);
+router.get('/admin/:orderId', authorize(UserRole.ADMIN), validateParams(orderIdParamSchema), getAdminOrder);
+router.post('/', validateBody(placeOrderSchema), placeOrder);
+router.post('/place', validateBody(placeOrderSchema), placeOrder);
 router.get('/:orderId', validateParams(orderIdParamSchema), getOrder);
-router.patch('/:orderId/status', validateParams(orderIdParamSchema), validateBody(updateOrderStatusSchema), updateOrderStatus);
+router.patch('/:orderId/cancel', validateParams(orderIdParamSchema), validateBody(cancelOrderSchema), cancelOrder);
+router.get('/:orderId/track', validateParams(orderIdParamSchema), trackOrder);
+router.get('/:orderId/invoice', validateParams(orderIdParamSchema), downloadInvoice);
+router.patch('/:orderId/status', authorize(UserRole.ADMIN), validateParams(orderIdParamSchema), validateBody(updateOrderStatusSchema), updateOrderStatus);
 router.patch('/:orderId/payment', validateParams(orderIdParamSchema), validateBody(updatePaymentStatusSchema), updatePaymentStatus);
 
 export default router;

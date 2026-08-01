@@ -7,6 +7,7 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
+    "seed": "ts-node-dev --transpile-only --exit-child src/scripts/seed.ts",
     "test": "jest --detectOpenHandles",
     "test:watch": "jest --watch",
     "lint": "eslint src --ext .ts",
