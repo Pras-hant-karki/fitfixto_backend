@@ -1,0 +1,53 @@
+export enum UserRole {
+  CUSTOMER = 'customer',
+  TRAINER = 'trainer',
+  SELLER = 'seller',
+  ADMIN = 'admin',
+}
+
+export enum ProductCategory {
+  GYM_EQUIPMENT = 'gym_equipment',
+  SUPPLEMENTS = 'supplements',
+  ACCESSORIES = 'accessories',
+}
+
+export enum ServiceType {
+  TRAINER_BOOKING = 'trainer_booking',
+  GYM_SETUP = 'gym_setup',
+  MAINTENANCE = 'maintenance',
+}
+
+export enum OrderStatus {
+  PENDING = 'pending',
+  CONFIRMED = 'confirmed',
+  SHIPPED = 'shipped',
+  DELIVERED = 'delivered',
+  CANCELLED = 'cancelled',
+  RETURNED = 'returned',
+}
+
+export enum PaymentStatus {
+  PENDING = 'pending',
+  COMPLETED = 'completed',
+  FAILED = 'failed',
+  REFUNDED = 'refunded',
+}
+
+export enum PaymentMethod {
+  CASH_ON_DELIVERY = 'cash_on_delivery',
+  ESEWA = 'esewa',
+  KHALTI = 'khalti',
+}
+
+export interface JwtPayload {
+  userId: string;
+  email: string;
+  role: UserRole;
+}
+
+export interface ApiResponse<T = unknown> {
+  success: boolean;
+  message: string;
+  data?: T;
+  error?: unknown;
+}
