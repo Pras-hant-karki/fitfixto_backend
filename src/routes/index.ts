@@ -12,6 +12,10 @@ import cartRouter from './cart.route';
 import wishlistRouter from './wishlist.route';
 import voucherRouter from './voucher.route';
 import paymentRouter from './payment.route';
+import partnerGymRouter from './partnerGym.route';
+import bookingRouter from './booking.route';
+import serviceRouter from './service.route';
+import discountRouter from './discount.route';
 
 const apiRouter = Router();
 
@@ -28,5 +32,9 @@ apiRouter.use('/cart', cartRouter);
 apiRouter.use('/wishlist', wishlistRouter);
 apiRouter.use('/vouchers', voucherRouter);
 apiRouter.use('/payments', paymentRouter);
+apiRouter.use('/partner-gyms', partnerGymRouter);
+apiRouter.use('/bookings', bookingRouter);
+apiRouter.use('/services', serviceRouter);
+apiRouter.use('/discounts', discountRouter);
 
 export default apiRouter;

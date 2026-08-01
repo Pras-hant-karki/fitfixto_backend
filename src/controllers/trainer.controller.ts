@@ -5,11 +5,21 @@ import { HTTP_STATUS } from '../constants/app.constants';
 import { AppError } from '../utils/appError';
 import { RequestWithUser } from '../middlewares/auth';
 import Trainer from '../models/Trainer';
+import TrainerAvailability from '../models/TrainerAvailability';
 import TrainerApplication from '../models/TrainerApplication';
+import TrainerProgram from '../models/TrainerProgram';
 import User from '../models/User';
 import { UserRole } from '../types/index';
 import { sendTrainerCredentialsEmail } from '../services/emailService';
-import { CreateTrainerRequest, TrainerApplicationRequest, UpdateTrainerRequest } from '../validations/trainer.validation';
+import {
+  CreateTrainerRequest,
+  TrainerApplicationRequest,
+  TrainerAvailabilityRequest,
+  TrainerProgramRequest,
+  UpdateTrainerAvailabilityRequest,
+  UpdateTrainerProgramRequest,
+  UpdateTrainerRequest,
+} from '../validations/trainer.validation';
 
 const buildTrainerPayload = (body: CreateTrainerRequest | UpdateTrainerRequest) => ({
   location: body.location,
@@ -29,14 +39,100 @@ const listTrainers = asyncHandler(async (_req: RequestWithUser, res: Response): 
   return sendSuccess(res, 'Trainers fetched successfully', { trainers }, HTTP_STATUS.OK) as any;
 });
 
+const listPublicTrainers = asyncHandler(async (_req: RequestWithUser, res: Response): Promise<void> => {
+  const trainers = await Trainer.find({ isSuspended: false })
+    .populate('userId', 'firstName lastName email phone bio profilePicture isActive')
+    .sort({ isFeatured: -1, createdAt: -1 });
+
+  const activeTrainers = trainers.filter((trainer) => {
+    const user = trainer.userId as unknown as { isActive?: boolean } | null;
+    return user?.isActive !== false;
+  });
+
+  return sendSuccess(res, 'Public trainers fetched successfully', { trainers: activeTrainers }, HTTP_STATUS.OK) as any;
+});
+
+const getPublicTrainer = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const { trainerId } = req.params;
+  const trainer = await Trainer.findOne({ _id: trainerId, isSuspended: false })
+    .populate('userId', 'firstName lastName email phone bio profilePicture isActive');
+
+  if (!trainer) {
+    throw new AppError('Trainer not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  const user = trainer.userId as unknown as { isActive?: boolean } | null;
+  if (user?.isActive === false) {
+    throw new AppError('Trainer not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  return sendSuccess(res, 'Trainer fetched successfully', { trainer }, HTTP_STATUS.OK) as any;
+});
+
+const listPublicTrainerPrograms = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const { trainerId } = req.params;
+
+  const trainer = await Trainer.findOne({ _id: trainerId, isSuspended: false }).populate('userId', 'isActive');
+  if (!trainer) {
+    throw new AppError('Trainer not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  const user = trainer.userId as unknown as { isActive?: boolean } | null;
+  if (user?.isActive === false) {
+    throw new AppError('Trainer not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  const programs = await TrainerProgram.find({ trainerId, isActive: true }).sort({ createdAt: -1 });
+
+  return sendSuccess(res, 'Trainer programs fetched successfully', { programs }, HTTP_STATUS.OK) as any;
+});
+
+const listPublicTrainerAvailability = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const { trainerId } = req.params;
+
+  const trainer = await Trainer.findOne({ _id: trainerId, isSuspended: false }).populate('userId', 'isActive');
+  if (!trainer) {
+    throw new AppError('Trainer not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  const user = trainer.userId as unknown as { isActive?: boolean } | null;
+  if (user?.isActive === false) {
+    throw new AppError('Trainer not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  const availability = await TrainerAvailability.find({ trainerId, isActive: true }).sort({ dayOfWeek: 1, timeLabel: 1 });
+
+  return sendSuccess(res, 'Trainer availability fetched successfully', { availability }, HTTP_STATUS.OK) as any;
+});
+
 const createTrainer = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
   const body = req.body as CreateTrainerRequest;
+
+  const normalizedEmail = body.email.trim().toLowerCase();
+  const [emailOwner, phoneOwner] = await Promise.all([
+    User.findOne({ email: normalizedEmail }).select('_id email role').lean(),
+    User.findOne({ phone: body.phone.trim() }).select('_id email role').lean(),
+  ]);
+
+  if (emailOwner) {
+    throw new AppError(
+      `A ${emailOwner.role} account already uses ${normalizedEmail}. Use a different email for this trainer.`,
+      HTTP_STATUS.CONFLICT
+    );
+  }
+
+  if (phoneOwner) {
+    throw new AppError(
+      `This phone number already belongs to ${phoneOwner.email}. Enter a different phone number before creating the trainer.`,
+      HTTP_STATUS.CONFLICT
+    );
+  }
 
   const user = await User.create({
     firstName: body.firstName,
     lastName: body.lastName,
-    email: body.email,
-    phone: body.phone,
+    email: normalizedEmail,
+    phone: body.phone.trim(),
     password: body.password,
     role: UserRole.TRAINER,
     bio: body.bio,
@@ -205,14 +301,151 @@ const uploadTrainerPhoto = asyncHandler(async (req: RequestWithUser, res: Respon
   return sendSuccess(res, 'Trainer photo uploaded successfully', { photo }, HTTP_STATUS.OK) as any;
 });
 
+const uploadTrainerApplicationFiles = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const files = (req.files || {}) as Record<string, Express.Multer.File[]>;
+  const photo = files.photo?.[0];
+  const certificates = files.certificates || [];
+
+  if (!photo && certificates.length === 0) {
+    throw new AppError('No application files uploaded', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  return sendSuccess(
+    res,
+    'Trainer application files uploaded successfully',
+    {
+      photo: photo ? `/uploads/${photo.filename}` : null,
+      certificates: certificates.map((file) => `/uploads/${file.filename}`),
+    },
+    HTTP_STATUS.OK
+  ) as any;
+});
+
+const getCurrentTrainer = async (req: RequestWithUser) => {
+  const trainer = await Trainer.findOne({ userId: req.user?._id });
+
+  if (!trainer) {
+    throw new AppError('Trainer profile not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  return trainer;
+};
+
+const listMyTrainerPrograms = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const trainer = await getCurrentTrainer(req);
+  const programs = await TrainerProgram.find({ trainerId: trainer._id }).sort({ createdAt: -1 });
+
+  return sendSuccess(res, 'Trainer programs fetched successfully', { programs }, HTTP_STATUS.OK) as any;
+});
+
+const createTrainerProgram = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const trainer = await getCurrentTrainer(req);
+  const body = req.body as TrainerProgramRequest;
+  const program = await TrainerProgram.create({
+    trainerId: trainer._id,
+    ...body,
+  });
+
+  return sendSuccess(res, 'Trainer program created successfully', { program }, HTTP_STATUS.CREATED) as any;
+});
+
+const updateTrainerProgram = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const trainer = await getCurrentTrainer(req);
+  const body = req.body as UpdateTrainerProgramRequest;
+  const { programId } = req.params;
+
+  const program = await TrainerProgram.findOneAndUpdate({ _id: programId, trainerId: trainer._id }, body, {
+    new: true,
+    runValidators: true,
+  });
+
+  if (!program) {
+    throw new AppError('Trainer program not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  return sendSuccess(res, 'Trainer program updated successfully', { program }, HTTP_STATUS.OK) as any;
+});
+
+const deleteTrainerProgram = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const trainer = await getCurrentTrainer(req);
+  const { programId } = req.params;
+  const program = await TrainerProgram.findOneAndDelete({ _id: programId, trainerId: trainer._id });
+
+  if (!program) {
+    throw new AppError('Trainer program not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  return sendSuccess(res, 'Trainer program deleted successfully', { programId }, HTTP_STATUS.OK) as any;
+});
+
+const listMyTrainerAvailability = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const trainer = await getCurrentTrainer(req);
+  const availability = await TrainerAvailability.find({ trainerId: trainer._id }).sort({ dayOfWeek: 1, timeLabel: 1 });
+
+  return sendSuccess(res, 'Trainer availability fetched successfully', { availability }, HTTP_STATUS.OK) as any;
+});
+
+const createTrainerAvailability = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const trainer = await getCurrentTrainer(req);
+  const body = req.body as TrainerAvailabilityRequest;
+  const availability = await TrainerAvailability.create({
+    trainerId: trainer._id,
+    ...body,
+  });
+
+  return sendSuccess(res, 'Trainer availability created successfully', { availability }, HTTP_STATUS.CREATED) as any;
+});
+
+const updateTrainerAvailability = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const trainer = await getCurrentTrainer(req);
+  const body = req.body as UpdateTrainerAvailabilityRequest;
+  const { slotId } = req.params;
+
+  const availability = await TrainerAvailability.findOneAndUpdate({ _id: slotId, trainerId: trainer._id }, body, {
+    new: true,
+    runValidators: true,
+  });
+
+  if (!availability) {
+    throw new AppError('Trainer availability slot not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  return sendSuccess(res, 'Trainer availability updated successfully', { availability }, HTTP_STATUS.OK) as any;
+});
+
+const deleteTrainerAvailability = asyncHandler(async (req: RequestWithUser, res: Response): Promise<void> => {
+  const trainer = await getCurrentTrainer(req);
+  const { slotId } = req.params;
+  const availability = await TrainerAvailability.findOneAndDelete({ _id: slotId, trainerId: trainer._id });
+
+  if (!availability) {
+    throw new AppError('Trainer availability slot not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  return sendSuccess(res, 'Trainer availability deleted successfully', { slotId }, HTTP_STATUS.OK) as any;
+});
+
 export {
   listTrainers,
+  listPublicTrainers,
+  getPublicTrainer,
+  listPublicTrainerPrograms,
+  listPublicTrainerAvailability,
   createTrainer,
   updateTrainer,
   deleteTrainer,
   uploadTrainerPhoto,
+  uploadTrainerApplicationFiles,
   createTrainerApplication,
   listTrainerApplications,
   approveTrainerApplication,
   rejectTrainerApplication,
+  listMyTrainerPrograms,
+  createTrainerProgram,
+  updateTrainerProgram,
+  deleteTrainerProgram,
+  listMyTrainerAvailability,
+  createTrainerAvailability,
+  updateTrainerAvailability,
+  deleteTrainerAvailability,
 };

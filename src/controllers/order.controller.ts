@@ -249,6 +249,7 @@ const getMyOrders = asyncHandler(async (req: RequestWithUser, res: Response): Pr
   }
 
   const orders = await Order.find({ userId: req.user._id })
+    .populate('items.productId', 'name price category brand images stock verifiedBadge')
     .populate('deliveryAddressId')
     .sort({ createdAt: -1 });
 
@@ -377,7 +378,7 @@ const trackOrder = asyncHandler(async (req: RequestWithUser, res: Response): Pro
   const timeline = buildDeliveryTimeline(
     order.createdAt,
     order.status,
-    order.status !== OrderStatus.PENDING ? new Date(order.updatedAt) : undefined,
+    new Date(order.updatedAt),
     order.status === OrderStatus.SHIPPED ? new Date(order.updatedAt) : undefined,
     order.deliveredAt
   );
@@ -457,10 +458,10 @@ const updateOrderStatus = asyncHandler(async (req: RequestWithUser, res: Respons
 
   // Validate status transitions
   const validTransitions: Record<OrderStatus, OrderStatus[]> = {
-    [OrderStatus.PENDING]: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
-    [OrderStatus.CONFIRMED]: [OrderStatus.SHIPPED, OrderStatus.CANCELLED],
+    [OrderStatus.PENDING]: [OrderStatus.CONFIRMED],
+    [OrderStatus.CONFIRMED]: [OrderStatus.SHIPPED],
     [OrderStatus.SHIPPED]: [OrderStatus.DELIVERED],
-    [OrderStatus.DELIVERED]: [OrderStatus.RETURNED],
+    [OrderStatus.DELIVERED]: [],
     [OrderStatus.CANCELLED]: [],
     [OrderStatus.RETURNED]: [],
   };
@@ -487,14 +488,12 @@ const updateOrderStatus = asyncHandler(async (req: RequestWithUser, res: Respons
 
   await order.save();
 
-  if ([OrderStatus.CANCELLED, OrderStatus.SHIPPED, OrderStatus.DELIVERED].includes(status)) {
+  if ([OrderStatus.SHIPPED, OrderStatus.DELIVERED].includes(status)) {
     try {
       const customer = await User.findById(order.userId).select('email');
 
       if (customer?.email) {
-        if (status === OrderStatus.CANCELLED) {
-          await sendOrderCancelledEmail(customer.email, order);
-        } else if (status === OrderStatus.SHIPPED) {
+        if (status === OrderStatus.SHIPPED) {
           await sendOrderShippedEmail(customer.email, order);
         } else if (status === OrderStatus.DELIVERED) {
           await sendOrderDeliveredEmail(customer.email, order);
@@ -508,7 +507,7 @@ const updateOrderStatus = asyncHandler(async (req: RequestWithUser, res: Respons
   const timeline = buildDeliveryTimeline(
     order.createdAt,
     order.status,
-    order.status !== OrderStatus.PENDING ? new Date(order.updatedAt) : undefined,
+    new Date(order.updatedAt),
     order.status === OrderStatus.SHIPPED ? new Date(order.updatedAt) : undefined,
     order.deliveredAt
   );

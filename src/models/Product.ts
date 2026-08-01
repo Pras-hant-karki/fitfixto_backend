@@ -1,5 +1,4 @@
 import { Schema, model, Document, Types } from 'mongoose';
-import { ProductCategory } from '../types/index';
 
 export interface IProductDimensions {
   length?: number;
@@ -16,7 +15,8 @@ export interface IProduct extends Document {
   warrantyMonths?: number;
   price: number;
   stock: number;
-  category: ProductCategory;
+  category: string;
+  subcategory?: string;
   brand?: string;
   images: string[];
   tags?: string[];
@@ -77,8 +77,14 @@ const productSchema = new Schema<IProduct>(
     },
     category: {
       type: String,
-      enum: Object.values(ProductCategory),
       required: [true, 'Product category is required'],
+      trim: true,
+      maxlength: [100, 'Product category must be at most 100 characters'],
+    },
+    subcategory: {
+      type: String,
+      trim: true,
+      maxlength: [100, 'Subcategory must be at most 100 characters'],
     },
     brand: {
       type: String,

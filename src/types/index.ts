@@ -5,9 +5,13 @@ export enum UserRole {
 }
 
 export enum ProductCategory {
-  GYM_EQUIPMENT = 'gym_equipment',
-  SUPPLEMENTS = 'supplements',
+  STRENGTH_EQUIPMENT = 'strength_equipment',
+  CARDIO_EQUIPMENT = 'cardio_equipment',
+  FUNCTIONAL_TRAINING = 'functional_training',
   ACCESSORIES = 'accessories',
+  SUPPLEMENTS = 'supplements',
+  RECOVERY_MOBILITY = 'recovery_mobility',
+  GYM_EQUIPMENT = 'gym_equipment',
 }
 
 export enum ServiceType {

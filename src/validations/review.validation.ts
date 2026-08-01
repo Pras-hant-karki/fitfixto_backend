@@ -8,17 +8,13 @@ export const ratingSchema = z
 
 export const createReviewSchema = z
   .object({
-    productId: z.string().min(1, 'Product ID is required').optional(),
-    trainerId: z.string().min(1, 'Trainer ID is required').optional(),
+    productId: z.string().min(1, 'Product ID is required'),
+    orderId: z.string().min(1, 'Order ID is required'),
     rating: ratingSchema,
     title: z.string().min(1).max(150).optional(),
     comment: z.string().min(1).max(2000).optional(),
   })
-  .strict()
-  .refine((data) => !!data.productId || !!data.trainerId, {
-    message: 'Either productId or trainerId is required',
-    path: ['productId'],
-  });
+  .strict();
 
 export type CreateReviewRequest = z.infer<typeof createReviewSchema>;
 
@@ -42,11 +38,36 @@ export type ReviewIdParamRequest = z.infer<typeof reviewIdParamSchema>;
 
 export const reviewListQuerySchema = z
   .object({
+    productId: z.string().min(1).optional(),
+    userId: z.string().min(1).optional(),
     page: z.coerce.number().int().min(1).optional().default(1),
     limit: z.coerce.number().int().min(1).max(100).optional().default(20),
-    sortBy: z.string().optional(),
+    sortBy: z.enum(['createdAt', 'rating']).optional().default('createdAt'),
     order: z.enum(['asc', 'desc']).optional().default('desc'),
   })
   .strict();
 
 export type ReviewListQueryRequest = z.infer<typeof reviewListQuerySchema>;
+
+export const adminReviewListQuerySchema = reviewListQuerySchema.extend({
+  status: z.enum(['all', 'approved', 'removed']).optional().default('all'),
+  search: z.string().trim().optional(),
+});
+
+export type AdminReviewListQueryRequest = z.infer<typeof adminReviewListQuerySchema>;
+
+export const reviewModerationSchema = z
+  .object({
+    status: z.enum(['approved', 'removed']),
+  })
+  .strict();
+
+export type ReviewModerationRequest = z.infer<typeof reviewModerationSchema>;
+
+export const reviewFeatureSchema = z
+  .object({
+    isFeatured: z.boolean(),
+  })
+  .strict();
+
+export type ReviewFeatureRequest = z.infer<typeof reviewFeatureSchema>;

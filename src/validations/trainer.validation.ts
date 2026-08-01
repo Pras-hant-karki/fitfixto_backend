@@ -76,6 +76,7 @@ export const trainerApplicationSchema = z
     experienceYears: z.coerce.number().int().nonnegative('Experience must be non-negative').default(0),
     specialties: listSchema,
     certifications: listSchema,
+    certificationFiles: listSchema,
   })
   .strict();
 
@@ -88,3 +89,50 @@ export const trainerApplicationIdParamSchema = z
   .strict();
 
 export type TrainerApplicationIdParamRequest = z.infer<typeof trainerApplicationIdParamSchema>;
+
+export const trainerProgramSchema = z
+  .object({
+    title: z.string().min(2, 'Program title must be at least 2 characters').max(100),
+    description: z.string().max(500, 'Program description must be at most 500 characters').optional(),
+    durationWeeks: z.coerce.number().int().min(1, 'Duration must be at least 1 week'),
+    sessions: z.coerce.number().int().min(1, 'Sessions must be at least 1'),
+    price: z.coerce.number().nonnegative('Program price cannot be negative'),
+    isActive: z.boolean().optional().default(true),
+  })
+  .strict();
+
+export type TrainerProgramRequest = z.infer<typeof trainerProgramSchema>;
+
+export const updateTrainerProgramSchema = trainerProgramSchema.partial().strict();
+
+export type UpdateTrainerProgramRequest = z.infer<typeof updateTrainerProgramSchema>;
+
+export const trainerProgramIdParamSchema = z
+  .object({
+    programId: z.string().min(1, 'Program ID is required'),
+  })
+  .strict();
+
+export type TrainerProgramIdParamRequest = z.infer<typeof trainerProgramIdParamSchema>;
+
+export const trainerAvailabilitySchema = z
+  .object({
+    dayOfWeek: z.enum(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']),
+    timeLabel: z.string().min(2, 'Time is required').max(30),
+    isActive: z.boolean().optional().default(true),
+  })
+  .strict();
+
+export type TrainerAvailabilityRequest = z.infer<typeof trainerAvailabilitySchema>;
+
+export const updateTrainerAvailabilitySchema = trainerAvailabilitySchema.partial().strict();
+
+export type UpdateTrainerAvailabilityRequest = z.infer<typeof updateTrainerAvailabilitySchema>;
+
+export const trainerAvailabilityIdParamSchema = z
+  .object({
+    slotId: z.string().min(1, 'Availability slot ID is required'),
+  })
+  .strict();
+
+export type TrainerAvailabilityIdParamRequest = z.infer<typeof trainerAvailabilityIdParamSchema>;

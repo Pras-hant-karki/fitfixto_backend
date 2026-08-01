@@ -5,11 +5,12 @@ import { HTTP_STATUS } from '../constants/app.constants';
 import Product from '../models/Product';
 import { RequestWithUser } from '../middlewares/auth';
 import { AppError } from '../utils/appError';
-import { ProductCategory, UserRole } from '../types/index';
+import { UserRole } from '../types/index';
 
 type ProductQuery = {
   search?: string;
-  category?: ProductCategory[];
+  category?: string[];
+  subcategory?: string;
   brand?: string;
   minPrice?: number;
   maxPrice?: number;
@@ -49,6 +50,7 @@ const listProducts = asyncHandler(async (req: RequestWithUser, res: Response): P
   const {
     search,
     category,
+    subcategory,
     brand,
     minPrice,
     maxPrice,
@@ -70,6 +72,8 @@ const listProducts = asyncHandler(async (req: RequestWithUser, res: Response): P
       { name: { $regex: search, $options: 'i' } },
       { description: { $regex: search, $options: 'i' } },
       { brand: { $regex: search, $options: 'i' } },
+      { category: { $regex: search, $options: 'i' } },
+      { subcategory: { $regex: search, $options: 'i' } },
       { sku: { $regex: search, $options: 'i' } },
       { tags: { $in: [new RegExp(search, 'i')] } },
     ];
@@ -77,6 +81,19 @@ const listProducts = asyncHandler(async (req: RequestWithUser, res: Response): P
 
   if (category?.length) {
     filter.category = { $in: category };
+  }
+
+  if (subcategory) {
+    const subcategories = subcategory
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+    if (subcategories.length === 1) {
+      filter.subcategory = { $regex: `^${escapeRegExp(subcategories[0])}$`, $options: 'i' };
+    } else if (subcategories.length > 1) {
+      filter.subcategory = { $in: subcategories.map((value) => new RegExp(`^${escapeRegExp(value)}$`, 'i')) };
+    }
   }
 
   if (brand) {
@@ -122,8 +139,6 @@ const listProducts = asyncHandler(async (req: RequestWithUser, res: Response): P
 
   if (typeof isActive === 'boolean' && isAdmin) {
     filter.isActive = isActive;
-  } else if (!isAdmin) {
-    filter.isActive = true;
   }
 
   const skip = (page - 1) * limit;
@@ -246,7 +261,7 @@ const compareProducts = asyncHandler(async (req: Request, res: Response): Promis
         .filter(Boolean);
 
   const products = await Product.find({ _id: { $in: parsedIds } }).select(
-    'name description specifications importedFrom warrantyMonths price category brand stock tags averageRating ratingCount verifiedBadge discountPercentage weight weightUnit dimensions images'
+    'name description specifications importedFrom warrantyMonths price category subcategory brand stock tags averageRating ratingCount verifiedBadge discountPercentage weight weightUnit dimensions images'
   );
 
   if (products.length < 2) {
