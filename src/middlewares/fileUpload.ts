@@ -26,9 +26,7 @@ const storage: StorageEngine = multer.diskStorage({
   },
 });
 
-// File filter
-const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  // Allowed file types for profile images
+const fileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
   const allowedMimes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
   if (allowedMimes.includes(file.mimetype)) {
@@ -43,8 +41,7 @@ const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCa
   }
 };
 
-// Configure multer
-const uploadProfileImage: Multer = multer({
+const imageUpload: Multer = multer({
   storage,
   fileFilter,
   limits: {
@@ -52,4 +49,7 @@ const uploadProfileImage: Multer = multer({
   },
 });
 
-export { uploadProfileImage };
+const uploadProfileImage = imageUpload;
+const uploadProductImages = imageUpload;
+
+export { uploadProfileImage, uploadProductImages };
